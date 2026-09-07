@@ -30,8 +30,10 @@ class AppConfig {
   /// same, so a stale `http://localhost:5239/uploads/x.jpg` still resolves
   /// against the current origin.
   ///
-  /// These are plain GETs on the same origin. `UseStaticFiles()` runs before
-  /// authentication in the API pipeline, so they need no bearer token.
+  /// Media is no longer served anonymously: the API signs these paths and
+  /// returns `/uploads/...?exp=&sig=`, and requests without a valid signature
+  /// are refused. **The query string is the credential**, so it has to survive
+  /// this method — dropping it turns every avatar into a 401.
   static String? mediaUrl(String? storedPath) {
     if (storedPath == null || storedPath.isEmpty) return null;
 
@@ -39,7 +41,8 @@ class AppConfig {
     if (path.startsWith('http://') || path.startsWith('https://')) {
       final parsed = Uri.tryParse(path);
       if (parsed == null) return null;
-      path = parsed.path;
+      // Path *and* query: `parsed.path` alone would strip the signature.
+      path = parsed.hasQuery ? '${parsed.path}?${parsed.query}' : parsed.path;
     }
     if (!path.startsWith('/')) path = '/$path';
     return '$apiOrigin$path';

@@ -5,10 +5,13 @@ import '../config/app_config.dart';
 
 /// A person's profile picture, falling back to their initials.
 ///
-/// Profile pictures are static files served from the API origin, ahead of the
-/// authentication middleware, so they need no bearer token — a plain image GET
-/// is enough. [AppConfig.mediaUrl] handles both the normal root-relative path
-/// and the legacy rows that stored a full absolute URL against an old host.
+/// Profile pictures come from the API already signed, so a plain image GET is
+/// still enough — no bearer token, which matters because [CachedNetworkImage]
+/// would otherwise need one threaded down to every avatar. The signature rides
+/// in the query string and expires, so a URL held across days stops working;
+/// re-fetching the person is what refreshes it. [AppConfig.mediaUrl] handles
+/// both the normal root-relative path and the legacy rows that stored a full
+/// absolute URL against an old host.
 class PersonAvatar extends StatelessWidget {
   const PersonAvatar({
     super.key,
