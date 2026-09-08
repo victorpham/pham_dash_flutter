@@ -34,6 +34,12 @@ class AppConfig {
   /// returns `/uploads/...?exp=&sig=`, and requests without a valid signature
   /// are refused. **The query string is the credential**, so it has to survive
   /// this method — dropping it turns every avatar into a 401.
+  ///
+  /// Returns null for a path outside [mediaPathPrefix]. Some rows still hold the
+  /// retired `/profile-images/person_<id>_<guid>.png` shape; that route is gone
+  /// and the server refuses to sign anything outside `/uploads/`, so building a
+  /// URL for one only buys a guaranteed 401. Callers fall back to initials.
+  /// Mirrors `MediaLink.Normalize` on the API.
   static String? mediaUrl(String? storedPath) {
     if (storedPath == null || storedPath.isEmpty) return null;
 
@@ -45,6 +51,11 @@ class AppConfig {
       path = parsed.hasQuery ? '${parsed.path}?${parsed.query}' : parsed.path;
     }
     if (!path.startsWith('/')) path = '/$path';
+    if (!path.toLowerCase().startsWith(mediaPathPrefix)) return null;
     return '$apiOrigin$path';
   }
+
+  /// URL prefix everything the API serves as media lives under, matching
+  /// `MediaLink.PathPrefix`.
+  static const String mediaPathPrefix = '/uploads/';
 }
