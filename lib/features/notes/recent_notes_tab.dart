@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 
 import '../../core/providers.dart';
@@ -53,9 +54,15 @@ class _NoteRow extends StatelessWidget {
     final createdAt = note.createdAt;
     final category = note.category;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      child: Row(
+    return InkWell(
+      // The web widget links each row to its author's detail page. A note whose
+      // person did not come back on the feed has nowhere to go.
+      onTap: person == null
+          ? null
+          : () => context.push('/people/${person.id}'),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           PersonAvatar(
@@ -121,7 +128,8 @@ class _NoteRow extends StatelessWidget {
               ],
             ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }

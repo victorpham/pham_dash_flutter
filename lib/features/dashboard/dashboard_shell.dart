@@ -202,9 +202,9 @@ class _AppDrawer extends ConsumerWidget {
             ),
             const Divider(),
 
-            // Destination order matches the web drawer. People, Spelling and
-            // Family Tree are shown but disabled — they are a later phase, and
-            // leaving them visible keeps the information architecture honest.
+            // Destination order matches the web drawer. Spelling and Family
+            // Tree are shown but disabled — they are a later phase, and leaving
+            // them visible keeps the information architecture honest.
             ListTile(
               leading: const Icon(Icons.dashboard_outlined),
               title: const Text('Dashboard'),
@@ -213,11 +213,13 @@ class _AppDrawer extends ConsumerWidget {
                 context.go(DashboardTab.schedule.path);
               },
             ),
-            const ListTile(
-              leading: Icon(Icons.people_outline),
-              title: Text('People'),
-              subtitle: Text('Coming soon'),
-              enabled: false,
+            ListTile(
+              leading: const Icon(Icons.people_outline),
+              title: const Text('People'),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push('/people');
+              },
             ),
             ListTile(
               leading: const Icon(Icons.calendar_month_outlined),

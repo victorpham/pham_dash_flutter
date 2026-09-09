@@ -123,6 +123,24 @@ abstract class TodoList with _$TodoList {
         for (final group in groups) ...group.items,
       ];
 
+  /// The full item ordering to send to `/todo/lists/{id}/items/reorder` after
+  /// one section has been rearranged.
+  ///
+  /// The server assigns `displayOrder = index` across the **whole list**, not
+  /// per group, and ids left out of the request keep their old value — so
+  /// posting just the section that moved leaves duplicate orders behind. Pass
+  /// the new ordering for whichever section changed under [ungrouped] or in
+  /// [groups]; every other section is taken as it currently stands.
+  List<int> reorderPayload({
+    List<int>? ungrouped,
+    Map<int, List<int>> groups = const {},
+  }) =>
+      [
+        ...ungrouped ?? items.map((item) => item.id),
+        for (final group in this.groups)
+          ...groups[group.id] ?? group.items.map((item) => item.id),
+      ];
+
   /// Minutes since midnight for [scheduledTime], or null when unscheduled.
   int? get scheduledMinutes => ApiDate.parseMinutesOfDay(scheduledTime);
 
@@ -182,8 +200,22 @@ abstract class CreateTodoItem with _$CreateTodoItem {
 ///    `scheduledTime`, `color` or `personId` by sending null.
 ///  * [clearSchedule] is the only way to remove a schedule, and it nulls
 ///    **both** `scheduledTime` and `scheduledDays`.
+///  * A colour is cleared by sending the **empty string**, not null — the
+///    server stores it verbatim and every client parses `""` back to "no
+///    colour". The web's "None" swatch sends null and so silently does
+///    nothing; see [kClearColor].
+///  * `personId` has no such escape hatch. It is a foreign key, so `""` fails
+///    the constraint rather than unlinking, and null is ignored — a list's
+///    person can be set and changed but **not removed** without an API change.
 ///  * An unparseable `scheduledTime` is silently dropped by the server rather
 ///    than rejected, so validate before sending.
+/// Sent as `color` to clear a list's colour.
+///
+/// `null` would be ignored by the partial-update rules, and the column is a
+/// plain `nvarchar(7)`, so the empty string is both accepted and parsed back to
+/// "no colour" by `parseHexColor`.
+const String kClearColor = '';
+
 class UpdateTodoList {
   const UpdateTodoList({
     this.title,

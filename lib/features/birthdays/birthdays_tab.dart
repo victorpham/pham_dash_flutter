@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/providers.dart';
@@ -52,54 +53,61 @@ class _BirthdayRow extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        children: [
-          PersonAvatar(
-            storedPath: birthday.profilePictureUrl,
-            initials: birthday.initials,
-            size: 48,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        // Every row on the web widget opens that person's detail page.
+        onTap: () => context.push('/people/${birthday.id}'),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              PersonAvatar(
+                storedPath: birthday.profilePictureUrl,
+                initials: birthday.initials,
+                size: 48,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        birthday.fullName,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            birthday.fullName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
                         ),
+                        _CountdownPill(birthday: birthday),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      [
+                        if (birthDate != null)
+                          DateFormat('MMM d').format(birthDate),
+                        if (birthday.upcomingAge != null)
+                          'Turning ${birthday.upcomingAge}',
+                      ].join(' · '),
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: scheme.mutedForeground,
                       ),
                     ),
-                    _CountdownPill(birthday: birthday),
                   ],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  [
-                    if (birthDate != null)
-                      DateFormat('MMM d').format(birthDate),
-                    if (birthday.upcomingAge != null)
-                      'Turning ${birthday.upcomingAge}',
-                  ].join(' · '),
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: scheme.mutedForeground,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

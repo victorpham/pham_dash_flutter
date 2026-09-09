@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
 import '../../data/models/calendar_models.dart';
-import '../../data/models/people_models.dart';
 
 /// Per-event metadata. All keyed by the Google event id.
 ///
@@ -45,12 +44,4 @@ final eventLinkedListsProvider =
 final allEventCategoriesProvider =
     FutureProvider.autoDispose<List<EventCategory>>(
   (ref) => ref.watch(eventCategoryRepositoryProvider).all(),
-);
-
-/// The people directory, for the attendee picker.
-///
-/// Not user-scoped — `Person` has no `UserId`, so this is the same list for
-/// everyone.
-final allPeopleProvider = FutureProvider.autoDispose<List<Person>>(
-  (ref) => ref.watch(peopleRepositoryProvider).all(),
 );

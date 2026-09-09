@@ -82,6 +82,11 @@
 			</array>
 		</dict>
 	</array>
+	<!-- Profile pictures are chosen from the library and uploaded to
+	     POST /api/people/{id}/profile-picture. Without this key iOS terminates
+	     the app the moment the picker opens. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a profile picture for someone in your family directory.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<!-- Dev only: the iOS simulator reaches a locally-running API over plain

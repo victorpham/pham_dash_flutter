@@ -6,6 +6,8 @@ import '../core/providers.dart';
 import '../features/calendar/calendar_screen.dart';
 import '../features/dashboard/dashboard_shell.dart';
 import '../features/login/login_screen.dart';
+import '../features/people/people_screen.dart';
+import '../features/people/person_detail_screen.dart';
 import '../features/todo/todo_list_detail_screen.dart';
 import '../features/todo/todo_screen.dart';
 
@@ -77,6 +79,19 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/calendar',
         builder: (context, state) => const CalendarScreen(),
+      ),
+      GoRoute(
+        path: '/people',
+        builder: (context, state) => const PeopleScreen(),
+      ),
+      // Pushed from the people list, the birthdays and notes tabs, and from one
+      // relationship row to another — so it is reachable without /people ever
+      // having been opened.
+      GoRoute(
+        path: '/people/:id',
+        builder: (context, state) => PersonDetailScreen(
+          personId: state.pathParameters['id']!,
+        ),
       ),
       GoRoute(
         path: '/todo',

@@ -5,8 +5,9 @@ import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/person_avatar.dart';
+import '../../core/ui/person_picker.dart';
 import '../../data/models/calendar_models.dart';
-import '../../data/models/people_models.dart';
+import '../people/people_providers.dart';
 import 'event_providers.dart';
 import 'event_utils.dart';
 
@@ -122,12 +123,8 @@ class EventDetailSheet extends ConsumerWidget {
     final people = await ref.read(allPeopleProvider.future);
     if (!context.mounted) return;
 
-    final selected = await showModalBottomSheet<Person>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _PersonPicker(people: people),
-    );
+    final selected =
+        await pickPerson(context, people: people, title: 'Search people');
     if (selected == null || !context.mounted) return;
 
     try {
@@ -559,72 +556,6 @@ class _TagsSection extends ConsumerWidget {
                 .withValues(alpha: 0.16),
           ),
       ],
-    );
-  }
-}
-
-class _PersonPicker extends StatefulWidget {
-  const _PersonPicker({required this.people});
-
-  final List<Person> people;
-
-  @override
-  State<_PersonPicker> createState() => _PersonPickerState();
-}
-
-class _PersonPickerState extends State<_PersonPicker> {
-  String _query = '';
-
-  @override
-  Widget build(BuildContext context) {
-    final query = _query.toLowerCase();
-    final matches = widget.people.where((person) {
-      if (query.isEmpty) return true;
-      return person.fullName.toLowerCase().contains(query) ||
-          (person.vietnameseName ?? '').toLowerCase().contains(query);
-    }).toList();
-
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: TextField(
-              autofocus: true,
-              decoration: const InputDecoration(
-                hintText: 'Search people',
-                prefixIcon: Icon(Icons.search),
-              ),
-              onChanged: (value) => setState(() => _query = value),
-            ),
-          ),
-          Flexible(
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: matches.length,
-              itemBuilder: (context, index) {
-                final person = matches[index];
-                return ListTile(
-                  leading: PersonAvatar(
-                    storedPath: person.profilePictureUrl,
-                    initials: person.initials,
-                    size: 36,
-                  ),
-                  title: Text(person.fullName),
-                  subtitle: person.vietnameseName == null
-                      ? null
-                      : Text(person.vietnameseName!),
-                  onTap: () => Navigator.of(context).pop(person),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
