@@ -1,4 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The Flutter template declares INTERNET only in the debug and profile
+         manifests, where it exists so the tooling can attach. A release build
+         merges neither, so without this the installed app launches and then
+         fails every API call. Cleartext stays off here: release traffic goes to
+         HTTPS, and the debug manifest keeps its own exemption for the local
+         dev server. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="PhamDash"
         android:name="${applicationName}"

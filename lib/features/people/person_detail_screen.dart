@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 
+import '../../app/router.dart';
 import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
@@ -20,6 +21,39 @@ import 'relationship_groups.dart';
 /// A note younger than this is badged "New", as on the web timeline.
 const Duration _recentNoteWindow = Duration(days: 7);
 
+/// How many `/people/:id` pages are currently stacked.
+///
+/// Following relationships pushes one person page onto another with no limit,
+/// and the count is what says whether the user is deep enough to need an
+/// escape hatch.
+int _personPagesInStack(BuildContext context) => GoRouter.of(context)
+    .routerDelegate
+    .currentConfiguration
+    .matches
+    .where((match) => match.matchedLocation.startsWith('$peopleListLocation/'))
+    .length;
+
+/// Drops the whole chain of person pages and lands on the people list.
+///
+/// Popping to the list is preferred over navigating to it, so that whatever sat
+/// underneath the chain — the dashboard, usually — survives as the back target.
+/// A chain that began at a birthday row or a recent note has no list beneath it
+/// to land on, so one is pushed instead; either way the button does what it
+/// says.
+void _backToPeopleList(BuildContext context) {
+  final router = GoRouter.of(context);
+  final listIsBelow = router.routerDelegate.currentConfiguration.matches
+      .any((match) => match.matchedLocation == peopleListLocation);
+
+  Navigator.of(context).popUntil(
+    // `isFirst` guards the case where a person page is the whole stack, as a
+    // deep link would leave it — popping that far would empty the navigator.
+    (route) => route.isFirst || route.settings.name != personPageName,
+  );
+
+  if (!listIsBelow) router.push(peopleListLocation);
+}
+
 class PersonDetailScreen extends ConsumerWidget {
   const PersonDetailScreen({super.key, required this.personId});
 
@@ -33,6 +67,15 @@ class PersonDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(person.value?.fullName ?? 'Person'),
         actions: [
+          // Only once a chain has formed. On the first person page the ordinary
+          // back button already does this, and a second button that behaves
+          // identically is just noise.
+          if (_personPagesInStack(context) > 1)
+            IconButton(
+              tooltip: 'Back to the people list',
+              icon: const Icon(Icons.people_alt_outlined),
+              onPressed: () => _backToPeopleList(context),
+            ),
           if (person.value != null)
             IconButton(
               tooltip: 'Edit',

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/repositories/calendar_repository.dart';
 import '../data/repositories/people_repository.dart';
 import '../data/repositories/todo_repository.dart';
+import '../data/repositories/weather_repository.dart';
 import 'api/api_client.dart';
 import 'auth/auth_service.dart';
 
@@ -52,6 +53,10 @@ final relationshipsRepositoryProvider = Provider(
 final userPreferenceRepositoryProvider = Provider(
   (ref) => UserPreferenceRepository(ref.watch(apiClientProvider)),
 );
+
+/// Weather is not a PhamDash feature: this one talks to weather.gov and
+/// Nominatim, so it takes no [ApiClient] and carries no bearer token.
+final weatherRepositoryProvider = Provider((ref) => WeatherRepository());
 
 /// The signed-in user, or null.
 ///

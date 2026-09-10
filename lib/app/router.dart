@@ -18,6 +18,15 @@ import '../features/todo/todo_screen.dart';
 /// user on the dashboard.
 final _pendingDestination = ValueNotifier<String?>(null);
 
+/// The `RouteSettings.name` carried by every `/people/:id` page.
+///
+/// Person pages stack on each other through the relationship rows, so they need
+/// to be identifiable as a group to be popped as one.
+const String personPageName = 'person-detail';
+
+/// The people list's location, as matched by the router.
+const String peopleListLocation = '/people';
+
 final routerProvider = Provider<GoRouter>((ref) {
   // Rebuilding the router on every auth change would lose navigation state, so
   // instead we expose auth as a Listenable and let go_router re-run `redirect`.
@@ -87,10 +96,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Pushed from the people list, the birthdays and notes tabs, and from one
       // relationship row to another — so it is reachable without /people ever
       // having been opened.
+      //
+      // The page is named because relationships stack person on person without
+      // limit, and unwinding that a tap at a time is the thing users complain
+      // about. [personPageName] is what lets one action drop the whole chain.
       GoRoute(
         path: '/people/:id',
-        builder: (context, state) => PersonDetailScreen(
-          personId: state.pathParameters['id']!,
+        pageBuilder: (context, state) => MaterialPage(
+          key: state.pageKey,
+          name: personPageName,
+          child: PersonDetailScreen(
+            personId: state.pathParameters['id']!,
+          ),
         ),
       ),
       GoRoute(

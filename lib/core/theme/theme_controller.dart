@@ -23,8 +23,8 @@ class ThemeSettings {
 ///
 /// The MVP **never writes preferences back**. `PUT /api/user-preferences` is a
 /// full replace that nulls every omitted field, so a partial write from the
-/// phone would silently wipe the web app's saved theme. The dark-mode toggle in
-/// the tab bar is therefore a device-local setting.
+/// phone would silently wipe the web app's saved theme. The dark-mode switch in
+/// the drawer footer is therefore a device-local setting.
 class ThemeController extends Notifier<ThemeSettings> {
   static const _seedKey = 'phamdash_primary_color';
   static const _modeKey = 'phamdash_theme_mode';
@@ -72,7 +72,7 @@ class ThemeController extends Notifier<ThemeSettings> {
     }
   }
 
-  /// The tab bar's sun/moon button. Persists to this device only.
+  /// The drawer footer's dark-mode switch. Persists to this device only.
   Future<void> toggleDarkMode(Brightness current) async {
     final next =
         current == Brightness.dark ? ThemeMode.light : ThemeMode.dark;

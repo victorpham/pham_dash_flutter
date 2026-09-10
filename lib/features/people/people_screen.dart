@@ -31,8 +31,11 @@ class _StoredFlag extends Notifier<bool> {
   bool build() =>
       ref.watch(sharedPreferencesProvider).getBool(_key) ?? false;
 
-  Future<void> toggle() async {
-    state = !state;
+  Future<void> toggle() => set(!state);
+
+  Future<void> set(bool value) async {
+    if (state == value) return;
+    state = value;
     await ref.read(sharedPreferencesProvider).setBool(_key, state);
   }
 }
@@ -42,6 +45,24 @@ final missingBirthdateFilterProvider =
 
 final missingPictureFilterProvider =
     NotifierProvider<_StoredFlag, bool>(() => _StoredFlag(_missingPictureKey));
+
+/// Whether anything is narrowing the directory right now.
+final _isFilteredProvider = Provider.autoDispose<bool>(
+  (ref) =>
+      ref.watch(_searchProvider).trim().isNotEmpty ||
+      ref.watch(missingBirthdateFilterProvider) ||
+      ref.watch(missingPictureFilterProvider),
+);
+
+/// Drops the search text and both data-hygiene filters.
+///
+/// The search box watches [_searchProvider] rather than owning its text, so
+/// clearing it here is enough to empty the field as well.
+void _clearAll(WidgetRef ref) {
+  ref.read(_searchProvider.notifier).value = '';
+  ref.read(missingBirthdateFilterProvider.notifier).set(false);
+  ref.read(missingPictureFilterProvider.notifier).set(false);
+}
 
 /// The directory after both filters and the search box.
 ///
@@ -72,6 +93,16 @@ class PeopleScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('People'),
+        actions: [
+          // Only offered when something is actually being hidden, so it never
+          // reads as a button that does nothing.
+          if (ref.watch(_isFilteredProvider))
+            IconButton(
+              tooltip: 'Clear search and filters',
+              icon: const Icon(Icons.filter_alt_off_outlined),
+              onPressed: () => _clearAll(ref),
+            ),
+        ],
         bottom: const PreferredSize(
           preferredSize: Size.fromHeight(104),
           child: _SearchAndFilters(),
@@ -100,10 +131,25 @@ class PeopleScreen extends ConsumerWidget {
             // a filter result rather than an empty directory.
             final matches = ref.watch(filteredPeopleProvider);
             if (matches.isEmpty) {
-              return const EmptyStateView(
-                icon: Icons.search_off,
-                title: 'No matches',
-                message: 'Try a different search, or clear the filters.',
+              return ListView(
+                // A scrollable, so pull-to-refresh still works on the empty
+                // state rather than dead-ending here.
+                children: [
+                  const SizedBox(height: 40),
+                  const EmptyStateView(
+                    icon: Icons.search_off,
+                    title: 'No matches',
+                    message: 'Nobody matches the current search and filters.',
+                  ),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: FilledButton.tonalIcon(
+                      onPressed: () => _clearAll(ref),
+                      icon: const Icon(Icons.filter_alt_off_outlined),
+                      label: const Text('Clear search and filters'),
+                    ),
+                  ),
+                ],
               );
             }
 
@@ -121,11 +167,36 @@ class PeopleScreen extends ConsumerWidget {
   }
 }
 
-class _SearchAndFilters extends ConsumerWidget {
+class _SearchAndFilters extends ConsumerStatefulWidget {
   const _SearchAndFilters();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_SearchAndFilters> createState() => _SearchAndFiltersState();
+}
+
+class _SearchAndFiltersState extends ConsumerState<_SearchAndFilters> {
+  /// Seeded from the provider rather than starting blank.
+  ///
+  /// The search outlives this widget — leaving for a person's page and coming
+  /// back rebuilds the field but not the provider. An uncontrolled field would
+  /// come back empty over a still-filtered list, with nothing on screen
+  /// admitting a search was active.
+  late final _controller = TextEditingController(text: ref.read(_searchProvider));
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Follow the provider when something else changes it — the clear button in
+    // the field, or "Clear search and filters" on the empty state.
+    ref.listen(_searchProvider, (_, next) {
+      if (_controller.text != next) _controller.text = next;
+    });
+
     // Counts are over the whole directory, not the filtered view — they say how
     // much data is missing, so filtering them would make them meaningless.
     final people = ref.watch(allPeopleProvider).value ?? const <Person>[];
@@ -140,11 +211,23 @@ class _SearchAndFilters extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
-            decoration: const InputDecoration(
+            controller: _controller,
+            decoration: InputDecoration(
               hintText: 'Search name or Vietnamese name',
-              prefixIcon: Icon(Icons.search),
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: ref.watch(_searchProvider).isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      icon: const Icon(Icons.close),
+                      onPressed: () {
+                        _controller.clear();
+                        ref.read(_searchProvider.notifier).value = '';
+                        FocusScope.of(context).unfocus();
+                      },
+                    ),
               isDense: true,
-              border: OutlineInputBorder(),
+              border: const OutlineInputBorder(),
             ),
             onChanged: (value) =>
                 ref.read(_searchProvider.notifier).value = value,

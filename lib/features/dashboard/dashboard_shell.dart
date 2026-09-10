@@ -5,21 +5,31 @@ import 'package:go_router/go_router.dart';
 import '../../core/providers.dart';
 import '../../core/theme/theme_controller.dart';
 import '../birthdays/birthdays_tab.dart';
-import '../calendar/calendar_grid_tab.dart';
 import '../notes/recent_notes_tab.dart';
 import '../schedule/schedule_tab.dart';
 import '../scheduled_lists/scheduled_lists_tab.dart';
+import '../weather/weather_tab.dart';
 
 /// The dashboard's content tabs.
 ///
 /// The mobile web bar carries eight buttons — Menu, Weather, Calendar,
-/// Schedule, Lists, Birthdays, Notes, Theme. Menu and Theme are actions rather
-/// than destinations, and Weather is deferred (it talks to weather.gov and
-/// Nominatim, not to the PhamDash API), so five destinations remain, in the
-/// web's order.
+/// Schedule, Lists, Birthdays, Notes, Theme. Calendar has been dropped from the
+/// bar: the Schedule tab already covers the next seven days, and the full
+/// calendar — with its four view modes and manual sync — is a drawer
+/// destination. Five tab destinations remain, in the web's order.
+///
+/// Weather is the odd one out: it reaches weather.gov and Nominatim directly
+/// rather than the PhamDash API, so it is the only tab that keeps working
+/// while the API is down.
+///
+/// The bar around them differs from the web's: Menu still opens the drawer and
+/// People pushes a full screen, but dark mode has moved into the drawer footer,
+/// where a device-local setting sits better than in a row of destinations.
 enum DashboardTab {
-  calendar('/dashboard/calendar', 'Calendar', Icons.calendar_month_outlined,
-      Icons.calendar_month),
+  weather('/dashboard/weather', 'Weather', Icons.wb_cloudy_outlined,
+      Icons.wb_cloudy),
+  // Keeps the bare `/dashboard` path, so this stays the tab the app opens on
+  // even though it is no longer the first branch.
   schedule('/dashboard', 'Schedule', Icons.event_note_outlined,
       Icons.event_note),
   lists('/dashboard/lists', 'Lists', Icons.checklist_outlined, Icons.checklist),
@@ -36,11 +46,21 @@ enum DashboardTab {
   final IconData selectedIcon;
 
   Widget build() => switch (this) {
-        DashboardTab.calendar => const CalendarGridTab(),
+        DashboardTab.weather => const WeatherTab(),
         DashboardTab.schedule => const ScheduleTab(),
         DashboardTab.lists => const ScheduledListsTab(),
         DashboardTab.birthdays => const BirthdaysTab(),
         DashboardTab.notes => const RecentNotesTab(),
+      };
+
+  /// The action button for this tab, if it has one.
+  ///
+  /// It belongs to the shell rather than the tab: the tabs render into the
+  /// shell's `Scaffold`, so a tab that built its own would be nesting one
+  /// Scaffold inside another just to hang a button off it.
+  Widget? get floatingActionButton => switch (this) {
+        DashboardTab.notes => const AddNoteButton(),
+        _ => null,
       };
 }
 
@@ -60,6 +80,7 @@ class DashboardShell extends ConsumerWidget {
       // Tab content is deliberately full-bleed: the mobile web dashboard
       // strips card padding, radius and shadow so each widget fills the pane.
       body: navigationShell,
+      floatingActionButton: tab.floatingActionButton,
       bottomNavigationBar: _BottomBar(navigationShell: navigationShell),
     );
   }
@@ -73,7 +94,6 @@ class _BottomBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return SafeArea(
       top: false,
@@ -107,13 +127,13 @@ class _BottomBar extends ConsumerWidget {
                   initialLocation: tab.index == navigationShell.currentIndex,
                 ),
               ),
-            // Theme — the web's last button toggles dark mode.
+            // People is a push, not a branch: it is a full screen with its own
+            // app bar, search and FAB rather than a dashboard widget, so it
+            // never reads as "selected" here.
             _BarButton(
-              icon: isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-              label: 'Theme',
-              onTap: () => ref
-                  .read(themeControllerProvider.notifier)
-                  .toggleDarkMode(Theme.of(context).brightness),
+              icon: Icons.people_outline,
+              label: 'People',
+              onTap: () => context.push('/people'),
             ),
           ],
         ),
@@ -169,6 +189,7 @@ class _AppDrawer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider).value;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final scheme = Theme.of(context).colorScheme;
 
     return Drawer(
@@ -251,6 +272,19 @@ class _AppDrawer extends ConsumerWidget {
             ),
             const Spacer(),
             const Divider(),
+            // Dark mode is a device-local setting, not a destination — the
+            // drawer's footer is where it belongs rather than spending a slot
+            // in the tab bar.
+            SwitchListTile(
+              secondary: Icon(
+                isDark ? Icons.dark_mode : Icons.light_mode_outlined,
+              ),
+              title: const Text('Dark mode'),
+              value: isDark,
+              onChanged: (_) => ref
+                  .read(themeControllerProvider.notifier)
+                  .toggleDarkMode(Theme.of(context).brightness),
+            ),
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Sign out'),

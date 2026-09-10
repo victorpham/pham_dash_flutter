@@ -9,12 +9,27 @@ import '../../core/ui/async_view.dart';
 import '../../core/ui/person_avatar.dart';
 import '../../data/models/people_models.dart';
 import '../calendar/event_utils.dart';
+import 'add_note_sheet.dart';
 
 /// The only notes endpoint that embeds the author `person`, so every row can
 /// show an avatar without an extra request.
 final recentNotesProvider = FutureProvider.autoDispose<List<Note>>(
   (ref) => ref.watch(notesRepositoryProvider).recent(count: 10),
 );
+
+/// The Notes tab's action button, hosted by the dashboard shell's Scaffold.
+class AddNoteButton extends ConsumerWidget {
+  const AddNoteButton({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return FloatingActionButton(
+      tooltip: 'New note',
+      onPressed: () => showAddNoteSheet(context),
+      child: const Icon(Icons.note_add_outlined),
+    );
+  }
+}
 
 class RecentNotesTab extends ConsumerWidget {
   const RecentNotesTab({super.key});
@@ -30,9 +45,9 @@ class RecentNotesTab extends ConsumerWidget {
         onRetry: () => ref.invalidate(recentNotesProvider),
         emptyIcon: Icons.sticky_note_2_outlined,
         emptyTitle: 'No notes yet',
-        emptyMessage: 'Notes added to people show up here.',
+        emptyMessage: 'Notes about people show up here. Tap + to write one.',
         builder: (data) => ListView.separated(
-          padding: const EdgeInsets.only(bottom: 24),
+          padding: const EdgeInsets.only(bottom: 88),
           itemCount: data.length,
           separatorBuilder: (_, _) => const Divider(height: 1, indent: 66),
           itemBuilder: (context, index) => _NoteRow(note: data[index]),
