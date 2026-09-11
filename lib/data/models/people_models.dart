@@ -39,6 +39,50 @@ abstract class Person with _$Person {
     return combined.isEmpty ? '?' : combined.toUpperCase();
   }
 
+  /// Days until the next birthday, or null when no birth date is recorded.
+  ///
+  /// Reproduces `PersonService.GetUpcomingBirthdaysAsync` so a list sorted here
+  /// agrees with the server-computed birthdays widget: today's birthday is 0,
+  /// and a birthday already past this year rolls to next year.
+  ///
+  /// Both dates are built in UTC deliberately. Across a daylight-saving change
+  /// two local midnights are 23 or 25 hours apart, and `inDays` truncates —
+  /// which would quietly report "tomorrow" as today.
+  int? get daysUntilBirthday {
+    final birth = birthDate;
+    if (birth == null) return null;
+
+    final now = DateTime.now();
+    final today = DateTime.utc(now.year, now.month, now.day);
+
+    var next = _birthdayIn(today.year, birth);
+    if (next.isBefore(today)) next = _birthdayIn(today.year + 1, birth);
+
+    return next.difference(today).inDays;
+  }
+
+  /// The birthday in [year], clamped the way .NET's `AddYears` clamps it.
+  ///
+  /// A 29 February birth date has no 29th in a common year. .NET answers 28
+  /// February; Dart's `DateTime` constructor would roll over to 1 March and put
+  /// the person a day late.
+  static DateTime _birthdayIn(int year, DateTime birth) {
+    final lastDayOfMonth = DateTime.utc(year, birth.month + 1, 0).day;
+    return DateTime.utc(
+      year,
+      birth.month,
+      birth.day > lastDayOfMonth ? lastDayOfMonth : birth.day,
+    );
+  }
+
+  /// `Today!` / `Tomorrow` / `In 12 days`, worded as [UpcomingBirthday] does.
+  String? get birthdayCountdown => switch (daysUntilBirthday) {
+        null => null,
+        0 => 'Today!',
+        1 => 'Tomorrow',
+        final days => 'In $days days',
+      };
+
   /// Age in whole years today, or null when no birth date is recorded.
   int? get age {
     final birth = birthDate;
@@ -139,4 +183,26 @@ abstract class Relationship with _$Relationship {
 
   String get relatedPersonName =>
       '${relatedPersonFirstName ?? ''} ${relatedPersonLastName ?? ''}'.trim();
+}
+
+/// One picture in a person's gallery — `GET /api/people/{id}/pictures`.
+///
+/// A person can hold several; the one flagged [isPrimary] is what
+/// [Person.profilePictureUrl] mirrors, and so what every avatar in the app
+/// renders. Switching which is primary is the only way that field changes.
+@freezed
+abstract class PersonPicture with _$PersonPicture {
+  const factory PersonPicture({
+    required int id,
+    required String personId,
+
+    /// Signed and root-relative, like [Person.profilePictureUrl]. Resolve with
+    /// `AppConfig.mediaUrl`, which keeps the signature query intact.
+    String? profilePictureUrl,
+    @Default(false) bool isPrimary,
+    @UtcStamp() DateTime? uploadedAt,
+  }) = _PersonPicture;
+
+  factory PersonPicture.fromJson(Map<String, dynamic> json) =>
+      _$PersonPictureFromJson(json);
 }

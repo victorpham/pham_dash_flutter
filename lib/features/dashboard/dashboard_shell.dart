@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/providers.dart';
 import '../../core/theme/theme_controller.dart';
-import '../birthdays/birthdays_tab.dart';
 import '../notes/recent_notes_tab.dart';
 import '../schedule/schedule_tab.dart';
 import '../scheduled_lists/scheduled_lists_tab.dart';
@@ -13,10 +12,12 @@ import '../weather/weather_tab.dart';
 /// The dashboard's content tabs.
 ///
 /// The mobile web bar carries eight buttons — Menu, Weather, Calendar,
-/// Schedule, Lists, Birthdays, Notes, Theme. Calendar has been dropped from the
-/// bar: the Schedule tab already covers the next seven days, and the full
-/// calendar — with its four view modes and manual sync — is a drawer
-/// destination. Five tab destinations remain, in the web's order.
+/// Schedule, Lists, Birthdays, Notes, Theme. Two have been dropped here:
+/// Calendar, because the Schedule tab already covers the next seven days and
+/// the full calendar — four view modes, manual sync — is a drawer destination;
+/// and Birthdays, because the People screen now sorts by whose birthday is next
+/// and shows the same countdown on every row. Four tab destinations remain, in
+/// the web's order.
 ///
 /// Weather is the odd one out: it reaches weather.gov and Nominatim directly
 /// rather than the PhamDash API, so it is the only tab that keeps working
@@ -33,8 +34,6 @@ enum DashboardTab {
   schedule('/dashboard', 'Schedule', Icons.event_note_outlined,
       Icons.event_note),
   lists('/dashboard/lists', 'Lists', Icons.checklist_outlined, Icons.checklist),
-  birthdays('/dashboard/birthdays', 'Birthdays', Icons.cake_outlined,
-      Icons.cake),
   notes('/dashboard/notes', 'Notes', Icons.sticky_note_2_outlined,
       Icons.sticky_note_2);
 
@@ -49,7 +48,6 @@ enum DashboardTab {
         DashboardTab.weather => const WeatherTab(),
         DashboardTab.schedule => const ScheduleTab(),
         DashboardTab.lists => const ScheduledListsTab(),
-        DashboardTab.birthdays => const BirthdaysTab(),
         DashboardTab.notes => const RecentNotesTab(),
       };
 

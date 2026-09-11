@@ -32,6 +32,12 @@ final personRelationshipsProvider =
       ref.watch(relationshipsRepositoryProvider).forPerson(personId),
 );
 
+/// A person's gallery, the displayed picture first.
+final personPicturesProvider =
+    FutureProvider.autoDispose.family<List<PersonPicture>, String>(
+  (ref, personId) => ref.watch(peopleRepositoryProvider).pictures(personId),
+);
+
 /// Invalidates everything a write to [personId] can affect.
 ///
 /// A relationship write is the reason this exists: the server fans one create
@@ -42,5 +48,6 @@ void invalidatePerson(WidgetRef ref, String personId) {
   ref.invalidate(personProvider(personId));
   ref.invalidate(personNotesProvider(personId));
   ref.invalidate(personRelationshipsProvider(personId));
+  ref.invalidate(personPicturesProvider(personId));
   ref.invalidate(allPeopleProvider);
 }

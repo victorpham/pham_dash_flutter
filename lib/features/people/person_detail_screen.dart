@@ -16,6 +16,7 @@ import '../../data/models/people_models.dart';
 import '../notes/recent_notes_tab.dart';
 import 'people_providers.dart';
 import 'person_edit_sheet.dart';
+import 'person_picture_gallery.dart';
 import 'relationship_groups.dart';
 
 /// A note younger than this is badged "New", as on the web timeline.
@@ -128,10 +129,39 @@ class _Header extends ConsumerWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          PersonAvatar(
-            storedPath: person.profilePictureUrl,
-            initials: person.initials,
-            size: 72,
+          // Tapping the avatar opens the gallery. The picture is the obvious
+          // thing to reach for when you want to change the picture, and it
+          // saves a trip through the edit sheet to get there.
+          Semantics(
+            button: true,
+            label: 'Pictures of ${person.fullName}',
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: () => showPersonPictureGallery(context, person: person),
+              child: Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  PersonAvatar(
+                    storedPath: person.profilePictureUrl,
+                    initials: person.initials,
+                    size: 72,
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: scheme.primary,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: scheme.surface, width: 2),
+                    ),
+                    child: Icon(
+                      Icons.photo_library_outlined,
+                      size: 12,
+                      color: scheme.onPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(

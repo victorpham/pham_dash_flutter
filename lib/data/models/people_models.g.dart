@@ -98,3 +98,21 @@ Map<String, dynamic> _$RelationshipToJson(_Relationship instance) =>
       ),
       'relatedPersonProfilePictureUrl': instance.relatedPersonProfilePictureUrl,
     };
+
+_PersonPicture _$PersonPictureFromJson(Map<String, dynamic> json) =>
+    _PersonPicture(
+      id: (json['id'] as num).toInt(),
+      personId: json['personId'] as String,
+      profilePictureUrl: json['profilePictureUrl'] as String?,
+      isPrimary: json['isPrimary'] as bool? ?? false,
+      uploadedAt: const UtcStamp().fromJson(json['uploadedAt'] as String?),
+    );
+
+Map<String, dynamic> _$PersonPictureToJson(_PersonPicture instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'personId': instance.personId,
+      'profilePictureUrl': instance.profilePictureUrl,
+      'isPrimary': instance.isPrimary,
+      'uploadedAt': const UtcStamp().toJson(instance.uploadedAt),
+    };

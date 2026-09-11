@@ -64,7 +64,38 @@ void _clearAll(WidgetRef ref) {
   ref.read(missingPictureFilterProvider.notifier).set(false);
 }
 
-/// The directory after both filters and the search box.
+/// Orders the directory by whose birthday is next.
+///
+/// The API returns people by last name, then first. Re-sorting here turns the
+/// screen into a "who is coming up" list, which is what it is mostly used for.
+///
+///  * Anyone with a birth date sorts by days until it, soonest first, so
+///    today's birthday leads.
+///  * Two people sharing a date fall back to last name, then first.
+///  * Anyone without a birth date sinks to the bottom, alphabetically by last
+///    name — a group whose order would otherwise be arbitrary, and the same
+///    group the "No birthday" filter exists to help fill in.
+int comparePeopleByUpcomingBirthday(Person a, Person b) {
+  final daysA = a.daysUntilBirthday;
+  final daysB = b.daysUntilBirthday;
+
+  if (daysA != daysB) {
+    if (daysA == null) return 1;
+    if (daysB == null) return -1;
+    return daysA.compareTo(daysB);
+  }
+  return _byName(a, b);
+}
+
+int _byName(Person a, Person b) {
+  final lastName =
+      a.lastName.toLowerCase().compareTo(b.lastName.toLowerCase());
+  if (lastName != 0) return lastName;
+  return a.firstName.toLowerCase().compareTo(b.firstName.toLowerCase());
+}
+
+/// The directory after both filters and the search box, ordered by
+/// [comparePeopleByUpcomingBirthday].
 ///
 /// All client-side, over the single `GET /api/people` payload — there is no
 /// search endpoint.
@@ -80,7 +111,8 @@ final filteredPeopleProvider = Provider.autoDispose<List<Person>>((ref) {
     if (search.isEmpty) return true;
     return person.fullName.toLowerCase().contains(search) ||
         (person.vietnameseName ?? '').toLowerCase().contains(search);
-  }).toList();
+  }).toList()
+    ..sort(comparePeopleByUpcomingBirthday);
 });
 
 class PeopleScreen extends ConsumerWidget {
@@ -271,6 +303,7 @@ class _PersonRow extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final birthDate = person.birthDate;
     final age = person.age;
+    final daysUntil = person.daysUntilBirthday;
 
     return ListTile(
       leading: PersonAvatar(
@@ -278,9 +311,21 @@ class _PersonRow extends ConsumerWidget {
         initials: person.initials,
         size: 44,
       ),
-      title: Text(
-        person.fullName,
-        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              person.fullName,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          // Without this the ordering reads as arbitrary — the countdown is
+          // the sort key made visible.
+          if (person.birthdayCountdown case final countdown?)
+            _CountdownPill(text: countdown, isToday: daysUntil == 0),
+        ],
       ),
       subtitle: Text(
         [
@@ -291,7 +336,7 @@ class _PersonRow extends ConsumerWidget {
             'No birthday'
           else
             [
-              DateFormat('MMM d, y').format(birthDate),
+              DateFormat('MMM d').format(birthDate),
               if (age != null) '$age',
             ].join(' · '),
         ].join(' · '),
@@ -343,5 +388,35 @@ class _PersonRow extends ConsumerWidget {
       return;
     }
     ref.invalidate(allPeopleProvider);
+  }
+}
+
+/// The days-until pill, matching the one on the Birthdays dashboard tab.
+class _CountdownPill extends StatelessWidget {
+  const _CountdownPill({required this.text, required this.isToday});
+
+  final String text;
+  final bool isToday;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = isToday ? scheme.primary : scheme.onSurfaceVariant;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
   }
 }

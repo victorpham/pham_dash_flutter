@@ -4,6 +4,10 @@ import '../models/people_models.dart';
 import '../models/preference_models.dart';
 import 'decode.dart';
 
+/// The server's per-person picture ceiling, mirrored here so the UI can hide
+/// "add" at the limit rather than waiting for the 409.
+const int maxPicturesPerPerson = 10;
+
 /// People, their notes and their relationships.
 ///
 /// None of these are user-scoped - `Person` has no `UserId` column, so every
@@ -68,6 +72,10 @@ class PeopleRepository {
 
   /// `.jpg .jpeg .png .gif .webp`, max 5 MB. Returns the new root-relative
   /// path; resolve it with `AppConfig.mediaUrl`.
+  ///
+  /// Adds to the person's gallery and makes the new picture the displayed one.
+  /// Used by the create flow, which has no gallery to show yet; editing goes
+  /// through [addPicture] instead so it gets the full picture back.
   Future<String?> uploadProfilePicture(
     String id, {
     required String filePath,
@@ -80,6 +88,46 @@ class PeopleRepository {
     );
     return data is Map ? data['profilePictureUrl'] as String? : null;
   }
+
+  /// Every picture the person has, the displayed one first then newest first.
+  Future<List<PersonPicture>> pictures(String personId) async => decodeList(
+        await _api.get<dynamic>('/people/$personId/pictures'),
+        PersonPicture.fromJson,
+      );
+
+  /// Adds a picture and makes it the displayed one.
+  ///
+  /// 409s once the person is at [maxPicturesPerPerson]; the message is worth
+  /// showing as-is.
+  Future<PersonPicture?> addPicture(
+    String personId, {
+    required String filePath,
+    required String fileName,
+  }) async =>
+      decodeOrNull(
+        await _api.upload<dynamic>(
+          '/people/$personId/pictures',
+          filePath: filePath,
+          fileName: fileName,
+        ),
+        PersonPicture.fromJson,
+      );
+
+  /// Chooses which picture is displayed. Returns the refreshed gallery, so the
+  /// caller does not need a second round trip to redraw it.
+  Future<List<PersonPicture>> setPrimaryPicture(
+    String personId,
+    int pictureId,
+  ) async =>
+      decodeList(
+        await _api.post<dynamic>('/people/$personId/pictures/$pictureId/primary'),
+        PersonPicture.fromJson,
+      );
+
+  /// Permanent — the row and the file both go. If it was the displayed picture
+  /// the server promotes the next most recent, so re-read after this.
+  Future<void> deletePicture(String personId, int pictureId) =>
+      _api.delete('/people/$personId/pictures/$pictureId');
 
   static Map<String, dynamic> _personBody(
     String firstName,

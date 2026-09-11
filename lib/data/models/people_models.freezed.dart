@@ -1200,4 +1200,290 @@ as String?,
 
 }
 
+
+/// @nodoc
+mixin _$PersonPicture {
+
+ int get id; String get personId;/// Signed and root-relative, like [Person.profilePictureUrl]. Resolve with
+/// `AppConfig.mediaUrl`, which keeps the signature query intact.
+ String? get profilePictureUrl; bool get isPrimary;@UtcStamp() DateTime? get uploadedAt;
+/// Create a copy of PersonPicture
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PersonPictureCopyWith<PersonPicture> get copyWith => _$PersonPictureCopyWithImpl<PersonPicture>(this as PersonPicture, _$identity);
+
+  /// Serializes this PersonPicture to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as PersonPicture;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PersonPicture&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.personId, _this.personId) || other.personId == _this.personId)&&(identical(other.profilePictureUrl, _this.profilePictureUrl) || other.profilePictureUrl == _this.profilePictureUrl)&&(identical(other.isPrimary, _this.isPrimary) || other.isPrimary == _this.isPrimary)&&(identical(other.uploadedAt, _this.uploadedAt) || other.uploadedAt == _this.uploadedAt));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as PersonPicture;
+  return Object.hash(runtimeType,_this.id,_this.personId,_this.profilePictureUrl,_this.isPrimary,_this.uploadedAt);
+}
+
+@override
+String toString() {
+  final _this = this as PersonPicture;
+  return 'PersonPicture(id: ${_this.id}, personId: ${_this.personId}, profilePictureUrl: ${_this.profilePictureUrl}, isPrimary: ${_this.isPrimary}, uploadedAt: ${_this.uploadedAt})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PersonPictureCopyWith<$Res>  {
+  factory $PersonPictureCopyWith(PersonPicture value, $Res Function(PersonPicture) _then) = _$PersonPictureCopyWithImpl;
+@useResult
+$Res call({
+ int id, String personId, String? profilePictureUrl, bool isPrimary,@UtcStamp() DateTime? uploadedAt
+});
+
+
+
+
+}
+/// @nodoc
+class _$PersonPictureCopyWithImpl<$Res>
+    implements $PersonPictureCopyWith<$Res> {
+  _$PersonPictureCopyWithImpl(this._self, this._then);
+
+  final PersonPicture _self;
+  final $Res Function(PersonPicture) _then;
+
+/// Create a copy of PersonPicture
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? personId = null,Object? profilePictureUrl = freezed,Object? isPrimary = null,Object? uploadedAt = freezed,}) {
+  return _then(PersonPicture(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as int,personId: null == personId ? _self.personId : personId // ignore: cast_nullable_to_non_nullable
+as String,profilePictureUrl: freezed == profilePictureUrl ? _self.profilePictureUrl : profilePictureUrl // ignore: cast_nullable_to_non_nullable
+as String?,isPrimary: null == isPrimary ? _self.isPrimary : isPrimary // ignore: cast_nullable_to_non_nullable
+as bool,uploadedAt: freezed == uploadedAt ? _self.uploadedAt : uploadedAt // ignore: cast_nullable_to_non_nullable
+as DateTime?,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [PersonPicture].
+extension PersonPicturePatterns on PersonPicture {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _PersonPicture value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _PersonPicture() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _PersonPicture value)  $default,){
+final _that = this;
+switch (_that) {
+case _PersonPicture():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _PersonPicture value)?  $default,){
+final _that = this;
+switch (_that) {
+case _PersonPicture() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int id,  String personId,  String? profilePictureUrl,  bool isPrimary, @UtcStamp()  DateTime? uploadedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _PersonPicture() when $default != null:
+return $default(_that.id,_that.personId,_that.profilePictureUrl,_that.isPrimary,_that.uploadedAt);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int id,  String personId,  String? profilePictureUrl,  bool isPrimary, @UtcStamp()  DateTime? uploadedAt)  $default,) {final _that = this;
+switch (_that) {
+case _PersonPicture():
+return $default(_that.id,_that.personId,_that.profilePictureUrl,_that.isPrimary,_that.uploadedAt);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int id,  String personId,  String? profilePictureUrl,  bool isPrimary, @UtcStamp()  DateTime? uploadedAt)?  $default,) {final _that = this;
+switch (_that) {
+case _PersonPicture() when $default != null:
+return $default(_that.id,_that.personId,_that.profilePictureUrl,_that.isPrimary,_that.uploadedAt);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _PersonPicture implements PersonPicture {
+  const _PersonPicture({required this.id, required this.personId, this.profilePictureUrl, this.isPrimary = false, @UtcStamp() this.uploadedAt});
+  factory _PersonPicture.fromJson(Map<String, dynamic> json) => _$PersonPictureFromJson(json);
+
+@override final  int id;
+@override final  String personId;
+/// Signed and root-relative, like [Person.profilePictureUrl]. Resolve with
+/// `AppConfig.mediaUrl`, which keeps the signature query intact.
+@override final  String? profilePictureUrl;
+@override@JsonKey() final  bool isPrimary;
+@override@UtcStamp() final  DateTime? uploadedAt;
+
+/// Create a copy of PersonPicture
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$PersonPictureCopyWith<_PersonPicture> get copyWith => __$PersonPictureCopyWithImpl<_PersonPicture>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$PersonPictureToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PersonPicture&&(identical(other.id, id) || other.id == id)&&(identical(other.personId, personId) || other.personId == personId)&&(identical(other.profilePictureUrl, profilePictureUrl) || other.profilePictureUrl == profilePictureUrl)&&(identical(other.isPrimary, isPrimary) || other.isPrimary == isPrimary)&&(identical(other.uploadedAt, uploadedAt) || other.uploadedAt == uploadedAt));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,id,personId,profilePictureUrl,isPrimary,uploadedAt);
+}
+
+@override
+String toString() {
+    return 'PersonPicture(id: $id, personId: $personId, profilePictureUrl: $profilePictureUrl, isPrimary: $isPrimary, uploadedAt: $uploadedAt)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$PersonPictureCopyWith<$Res> implements $PersonPictureCopyWith<$Res> {
+  factory _$PersonPictureCopyWith(_PersonPicture value, $Res Function(_PersonPicture) _then) = __$PersonPictureCopyWithImpl;
+@override @useResult
+$Res call({
+ int id, String personId, String? profilePictureUrl, bool isPrimary,@UtcStamp() DateTime? uploadedAt
+});
+
+
+
+
+}
+/// @nodoc
+class __$PersonPictureCopyWithImpl<$Res>
+    implements _$PersonPictureCopyWith<$Res> {
+  __$PersonPictureCopyWithImpl(this._self, this._then);
+
+  final _PersonPicture _self;
+  final $Res Function(_PersonPicture) _then;
+
+/// Create a copy of PersonPicture
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? personId = null,Object? profilePictureUrl = freezed,Object? isPrimary = null,Object? uploadedAt = freezed,}) {
+  return _then(_PersonPicture(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as int,personId: null == personId ? _self.personId : personId // ignore: cast_nullable_to_non_nullable
+as String,profilePictureUrl: freezed == profilePictureUrl ? _self.profilePictureUrl : profilePictureUrl // ignore: cast_nullable_to_non_nullable
+as String?,isPrimary: null == isPrimary ? _self.isPrimary : isPrimary // ignore: cast_nullable_to_non_nullable
+as bool,uploadedAt: freezed == uploadedAt ? _self.uploadedAt : uploadedAt // ignore: cast_nullable_to_non_nullable
+as DateTime?,
+  ));
+}
+
+
+}
+
 // dart format on

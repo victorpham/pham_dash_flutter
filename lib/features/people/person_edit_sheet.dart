@@ -11,6 +11,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/ui/person_avatar.dart';
 import '../../data/models/people_models.dart';
 import 'people_providers.dart';
+import 'person_picture_gallery.dart';
 
 /// The upload endpoint's ceiling. Checking here turns a 400 from the server
 /// into a sentence the user can act on.
@@ -120,11 +121,21 @@ class _PersonEditSheetState extends ConsumerState<PersonEditSheet> {
                     shape: const CircleBorder(),
                     child: InkWell(
                       customBorder: const CircleBorder(),
-                      onTap: _saving ? null : _pickPicture,
+                      // Editing goes to the gallery, where a picture can be
+                      // added, chosen or deleted. Creating cannot: the picture
+                      // endpoints are keyed by id, and there is no id until the
+                      // person is saved, so it keeps the pick-then-upload flow.
+                      onTap: _saving
+                          ? null
+                          : _isEdit
+                              ? _openGallery
+                              : _pickPicture,
                       child: Padding(
                         padding: const EdgeInsets.all(6),
                         child: Icon(
-                          Icons.photo_camera_outlined,
+                          _isEdit
+                              ? Icons.photo_library_outlined
+                              : Icons.photo_camera_outlined,
                           size: 16,
                           color: scheme.onPrimary,
                         ),
@@ -195,8 +206,8 @@ class _PersonEditSheetState extends ConsumerState<PersonEditSheet> {
             if (_isEdit) ...[
               const SizedBox(height: 8),
               Text(
-                'Profile pictures are replaced through their own endpoint, so '
-                'the previous file is deleted when you upload a new one.',
+                'Tap the picture to add another, switch which one is shown, or '
+                'delete one.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: scheme.mutedForeground,
@@ -222,6 +233,16 @@ class _PersonEditSheetState extends ConsumerState<PersonEditSheet> {
       helpText: 'Birth date',
     );
     if (picked != null) setState(() => _birthDate = picked);
+  }
+
+  /// Opens the gallery for a person that already exists.
+  ///
+  /// Any change in there is written immediately and invalidates the person, so
+  /// there is nothing to fold into [_save] afterwards.
+  Future<void> _openGallery() async {
+    final person = widget.person;
+    if (person == null) return;
+    await showPersonPictureGallery(context, person: person);
   }
 
   Future<void> _pickPicture() async {
