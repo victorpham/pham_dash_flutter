@@ -17,6 +17,7 @@ import '../notes/recent_notes_tab.dart';
 import 'people_providers.dart';
 import 'person_edit_sheet.dart';
 import 'person_picture_gallery.dart';
+import 'person_tags_sheet.dart';
 import 'relationship_groups.dart';
 
 /// A note younger than this is badged "New", as on the web timeline.
@@ -101,6 +102,10 @@ class PersonDetailScreen extends ConsumerWidget {
             padding: const EdgeInsets.only(bottom: 40),
             children: [
               _Header(person: data!),
+              // Attached to the header rather than fenced off with a divider:
+              // tags are an attribute of the person, not a section of records
+              // peer to Relationships and Notes.
+              _TagsRow(person: data),
               const Divider(height: 32),
               _RelationshipsSection(person: data),
               const Divider(height: 32),
@@ -889,6 +894,47 @@ class _Message extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// A person's tags, and the way in to changing them.
+///
+/// No provider and no `AsyncValue` to unwrap — tags ride on the [Person] the
+/// page already loaded, which is the whole point of embedding them.
+///
+/// Add and remove go through the sheet rather than a delete "x" on each chip:
+/// one tap target instead of a 20px one beside a 30px one, one code path, and
+/// the sheet has to exist anyway for the people screen.
+class _TagsRow extends ConsumerWidget {
+  const _TagsRow({required this.person});
+
+  final Person person;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          for (final tag in person.tags)
+            _Pill(
+              text: tag.name,
+              color: parseHexColor(tag.color) ?? scheme.onSurfaceVariant,
+            ),
+          ActionChip(
+            avatar: const Icon(Icons.sell_outlined, size: 16),
+            label: Text(person.tags.isEmpty ? 'Add tags' : 'Edit'),
+            visualDensity: VisualDensity.compact,
+            onPressed: () => showPersonTagsSheet(context, person: person),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Pill extends StatelessWidget {

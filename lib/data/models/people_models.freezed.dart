@@ -20,7 +20,22 @@ mixin _$Person {
  String get id; String get firstName; String get lastName; String? get vietnameseName;@WallClock() DateTime? get birthDate;/// Root-relative, e.g. `/uploads/profile-pictures/aB3xQ_20260101120000.jpg`.
 /// Resolve with `AppConfig.mediaUrl`. Not updatable through `PUT` - use the
 /// dedicated upload endpoint, which also deletes the previous file.
- String? get profilePictureUrl;
+ String? get profilePictureUrl;/// Embedded by `GET /api/people` and `GET /api/people/{id}`, which is what
+/// lets the directory filter by tag without a request per person. Empty
+/// wherever a person rides as a nested object - `Note.person`, event
+/// attendees - because the server does not load them there, and empty on
+/// what `create`/`update` return, which is why writes invalidate instead.
+///
+/// Each entry carries `personCount: 0`; the real count is on
+/// `GET /api/person-tags`.
+///
+/// `@Default` rather than the `required` + `@JsonKey(defaultValue:)` that
+/// [TodoList.labels] uses, and deliberately so: `Person` is built by name in
+/// five test files, and a required field would break every one of them for
+/// no gain. `@Default` gives json_serializable the same `defaultValue`, so a
+/// missing or null `tags` still decodes to `[]`. Do not "tidy" this to
+/// `required` for symmetry.
+ List<PersonTag> get tags;
 /// Create a copy of Person
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -34,20 +49,20 @@ $PersonCopyWith<Person> get copyWith => _$PersonCopyWithImpl<Person>(this as Per
 @override
 bool operator ==(Object other) {
   final _this = this as Person;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is Person&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.firstName, _this.firstName) || other.firstName == _this.firstName)&&(identical(other.lastName, _this.lastName) || other.lastName == _this.lastName)&&(identical(other.vietnameseName, _this.vietnameseName) || other.vietnameseName == _this.vietnameseName)&&(identical(other.birthDate, _this.birthDate) || other.birthDate == _this.birthDate)&&(identical(other.profilePictureUrl, _this.profilePictureUrl) || other.profilePictureUrl == _this.profilePictureUrl));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is Person&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.firstName, _this.firstName) || other.firstName == _this.firstName)&&(identical(other.lastName, _this.lastName) || other.lastName == _this.lastName)&&(identical(other.vietnameseName, _this.vietnameseName) || other.vietnameseName == _this.vietnameseName)&&(identical(other.birthDate, _this.birthDate) || other.birthDate == _this.birthDate)&&(identical(other.profilePictureUrl, _this.profilePictureUrl) || other.profilePictureUrl == _this.profilePictureUrl)&&const DeepCollectionEquality().equals(other.tags, _this.tags));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as Person;
-  return Object.hash(runtimeType,_this.id,_this.firstName,_this.lastName,_this.vietnameseName,_this.birthDate,_this.profilePictureUrl);
+  return Object.hash(runtimeType,_this.id,_this.firstName,_this.lastName,_this.vietnameseName,_this.birthDate,_this.profilePictureUrl,const DeepCollectionEquality().hash(_this.tags));
 }
 
 @override
 String toString() {
   final _this = this as Person;
-  return 'Person(id: ${_this.id}, firstName: ${_this.firstName}, lastName: ${_this.lastName}, vietnameseName: ${_this.vietnameseName}, birthDate: ${_this.birthDate}, profilePictureUrl: ${_this.profilePictureUrl})';
+  return 'Person(id: ${_this.id}, firstName: ${_this.firstName}, lastName: ${_this.lastName}, vietnameseName: ${_this.vietnameseName}, birthDate: ${_this.birthDate}, profilePictureUrl: ${_this.profilePictureUrl}, tags: ${_this.tags})';
 }
 
 
@@ -58,7 +73,7 @@ abstract mixin class $PersonCopyWith<$Res>  {
   factory $PersonCopyWith(Person value, $Res Function(Person) _then) = _$PersonCopyWithImpl;
 @useResult
 $Res call({
- String id, String firstName, String lastName, String? vietnameseName,@WallClock() DateTime? birthDate, String? profilePictureUrl
+ String id, String firstName, String lastName, String? vietnameseName,@WallClock() DateTime? birthDate, String? profilePictureUrl, List<PersonTag> tags
 });
 
 
@@ -75,7 +90,7 @@ class _$PersonCopyWithImpl<$Res>
 
 /// Create a copy of Person
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? firstName = null,Object? lastName = null,Object? vietnameseName = freezed,Object? birthDate = freezed,Object? profilePictureUrl = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? firstName = null,Object? lastName = null,Object? vietnameseName = freezed,Object? birthDate = freezed,Object? profilePictureUrl = freezed,Object? tags = null,}) {
   return _then(Person(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,firstName: null == firstName ? _self.firstName : firstName // ignore: cast_nullable_to_non_nullable
@@ -83,7 +98,8 @@ as String,lastName: null == lastName ? _self.lastName : lastName // ignore: cast
 as String,vietnameseName: freezed == vietnameseName ? _self.vietnameseName : vietnameseName // ignore: cast_nullable_to_non_nullable
 as String?,birthDate: freezed == birthDate ? _self.birthDate : birthDate // ignore: cast_nullable_to_non_nullable
 as DateTime?,profilePictureUrl: freezed == profilePictureUrl ? _self.profilePictureUrl : profilePictureUrl // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,tags: null == tags ? _self.tags : tags // ignore: cast_nullable_to_non_nullable
+as List<PersonTag>,
   ));
 }
 
@@ -168,10 +184,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String firstName,  String lastName,  String? vietnameseName, @WallClock()  DateTime? birthDate,  String? profilePictureUrl)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String firstName,  String lastName,  String? vietnameseName, @WallClock()  DateTime? birthDate,  String? profilePictureUrl,  List<PersonTag> tags)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _Person() when $default != null:
-return $default(_that.id,_that.firstName,_that.lastName,_that.vietnameseName,_that.birthDate,_that.profilePictureUrl);case _:
+return $default(_that.id,_that.firstName,_that.lastName,_that.vietnameseName,_that.birthDate,_that.profilePictureUrl,_that.tags);case _:
   return orElse();
 
 }
@@ -189,10 +205,10 @@ return $default(_that.id,_that.firstName,_that.lastName,_that.vietnameseName,_th
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String firstName,  String lastName,  String? vietnameseName, @WallClock()  DateTime? birthDate,  String? profilePictureUrl)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String firstName,  String lastName,  String? vietnameseName, @WallClock()  DateTime? birthDate,  String? profilePictureUrl,  List<PersonTag> tags)  $default,) {final _that = this;
 switch (_that) {
 case _Person():
-return $default(_that.id,_that.firstName,_that.lastName,_that.vietnameseName,_that.birthDate,_that.profilePictureUrl);case _:
+return $default(_that.id,_that.firstName,_that.lastName,_that.vietnameseName,_that.birthDate,_that.profilePictureUrl,_that.tags);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -209,10 +225,10 @@ return $default(_that.id,_that.firstName,_that.lastName,_that.vietnameseName,_th
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String firstName,  String lastName,  String? vietnameseName, @WallClock()  DateTime? birthDate,  String? profilePictureUrl)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String firstName,  String lastName,  String? vietnameseName, @WallClock()  DateTime? birthDate,  String? profilePictureUrl,  List<PersonTag> tags)?  $default,) {final _that = this;
 switch (_that) {
 case _Person() when $default != null:
-return $default(_that.id,_that.firstName,_that.lastName,_that.vietnameseName,_that.birthDate,_that.profilePictureUrl);case _:
+return $default(_that.id,_that.firstName,_that.lastName,_that.vietnameseName,_that.birthDate,_that.profilePictureUrl,_that.tags);case _:
   return null;
 
 }
@@ -224,7 +240,7 @@ return $default(_that.id,_that.firstName,_that.lastName,_that.vietnameseName,_th
 @JsonSerializable()
 
 class _Person extends Person {
-  const _Person({required this.id, required this.firstName, required this.lastName, this.vietnameseName, @WallClock() this.birthDate, this.profilePictureUrl}): super._();
+  const _Person({required this.id, required this.firstName, required this.lastName, this.vietnameseName, @WallClock() this.birthDate, this.profilePictureUrl,  List<PersonTag> tags = const <PersonTag>[]}): _tags = tags,super._();
   factory _Person.fromJson(Map<String, dynamic> json) => _$PersonFromJson(json);
 
 /// A 5-character random alphanumeric id generated server-side, not a GUID.
@@ -237,6 +253,43 @@ class _Person extends Person {
 /// Resolve with `AppConfig.mediaUrl`. Not updatable through `PUT` - use the
 /// dedicated upload endpoint, which also deletes the previous file.
 @override final  String? profilePictureUrl;
+/// Embedded by `GET /api/people` and `GET /api/people/{id}`, which is what
+/// lets the directory filter by tag without a request per person. Empty
+/// wherever a person rides as a nested object - `Note.person`, event
+/// attendees - because the server does not load them there, and empty on
+/// what `create`/`update` return, which is why writes invalidate instead.
+///
+/// Each entry carries `personCount: 0`; the real count is on
+/// `GET /api/person-tags`.
+///
+/// `@Default` rather than the `required` + `@JsonKey(defaultValue:)` that
+/// [TodoList.labels] uses, and deliberately so: `Person` is built by name in
+/// five test files, and a required field would break every one of them for
+/// no gain. `@Default` gives json_serializable the same `defaultValue`, so a
+/// missing or null `tags` still decodes to `[]`. Do not "tidy" this to
+/// `required` for symmetry.
+ final  List<PersonTag> _tags;
+/// Embedded by `GET /api/people` and `GET /api/people/{id}`, which is what
+/// lets the directory filter by tag without a request per person. Empty
+/// wherever a person rides as a nested object - `Note.person`, event
+/// attendees - because the server does not load them there, and empty on
+/// what `create`/`update` return, which is why writes invalidate instead.
+///
+/// Each entry carries `personCount: 0`; the real count is on
+/// `GET /api/person-tags`.
+///
+/// `@Default` rather than the `required` + `@JsonKey(defaultValue:)` that
+/// [TodoList.labels] uses, and deliberately so: `Person` is built by name in
+/// five test files, and a required field would break every one of them for
+/// no gain. `@Default` gives json_serializable the same `defaultValue`, so a
+/// missing or null `tags` still decodes to `[]`. Do not "tidy" this to
+/// `required` for symmetry.
+@override@JsonKey() List<PersonTag> get tags {
+  if (_tags is EqualUnmodifiableListView) return _tags;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_tags);
+}
+
 
 /// Create a copy of Person
 /// with the given fields replaced by the non-null parameter values.
@@ -251,18 +304,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _Person&&(identical(other.id, id) || other.id == id)&&(identical(other.firstName, firstName) || other.firstName == firstName)&&(identical(other.lastName, lastName) || other.lastName == lastName)&&(identical(other.vietnameseName, vietnameseName) || other.vietnameseName == vietnameseName)&&(identical(other.birthDate, birthDate) || other.birthDate == birthDate)&&(identical(other.profilePictureUrl, profilePictureUrl) || other.profilePictureUrl == profilePictureUrl));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _Person&&(identical(other.id, id) || other.id == id)&&(identical(other.firstName, firstName) || other.firstName == firstName)&&(identical(other.lastName, lastName) || other.lastName == lastName)&&(identical(other.vietnameseName, vietnameseName) || other.vietnameseName == vietnameseName)&&(identical(other.birthDate, birthDate) || other.birthDate == birthDate)&&(identical(other.profilePictureUrl, profilePictureUrl) || other.profilePictureUrl == profilePictureUrl)&&const DeepCollectionEquality().equals(other.tags, _tags));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,id,firstName,lastName,vietnameseName,birthDate,profilePictureUrl);
+    return Object.hash(runtimeType,id,firstName,lastName,vietnameseName,birthDate,profilePictureUrl,const DeepCollectionEquality().hash(_tags));
 }
 
 @override
 String toString() {
-    return 'Person(id: $id, firstName: $firstName, lastName: $lastName, vietnameseName: $vietnameseName, birthDate: $birthDate, profilePictureUrl: $profilePictureUrl)';
+    return 'Person(id: $id, firstName: $firstName, lastName: $lastName, vietnameseName: $vietnameseName, birthDate: $birthDate, profilePictureUrl: $profilePictureUrl, tags: $tags)';
 }
 
 
@@ -273,7 +326,7 @@ abstract mixin class _$PersonCopyWith<$Res> implements $PersonCopyWith<$Res> {
   factory _$PersonCopyWith(_Person value, $Res Function(_Person) _then) = __$PersonCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String firstName, String lastName, String? vietnameseName,@WallClock() DateTime? birthDate, String? profilePictureUrl
+ String id, String firstName, String lastName, String? vietnameseName,@WallClock() DateTime? birthDate, String? profilePictureUrl, List<PersonTag> tags
 });
 
 
@@ -290,7 +343,7 @@ class __$PersonCopyWithImpl<$Res>
 
 /// Create a copy of Person
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? firstName = null,Object? lastName = null,Object? vietnameseName = freezed,Object? birthDate = freezed,Object? profilePictureUrl = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? firstName = null,Object? lastName = null,Object? vietnameseName = freezed,Object? birthDate = freezed,Object? profilePictureUrl = freezed,Object? tags = null,}) {
   return _then(_Person(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,firstName: null == firstName ? _self.firstName : firstName // ignore: cast_nullable_to_non_nullable
@@ -298,7 +351,291 @@ as String,lastName: null == lastName ? _self.lastName : lastName // ignore: cast
 as String,vietnameseName: freezed == vietnameseName ? _self.vietnameseName : vietnameseName // ignore: cast_nullable_to_non_nullable
 as String?,birthDate: freezed == birthDate ? _self.birthDate : birthDate // ignore: cast_nullable_to_non_nullable
 as DateTime?,profilePictureUrl: freezed == profilePictureUrl ? _self.profilePictureUrl : profilePictureUrl // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,tags: null == tags ? _self._tags : tags // ignore: cast_nullable_to_non_nullable
+as List<PersonTag>,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
+mixin _$PersonTag {
+
+ int get id; String get name;/// A 7-character hex string, e.g. `#dcfce7`, or null for the default chip
+/// colour. Resolve with `parseHexColor`.
+ String? get color;@JsonKey(defaultValue: 0) int get personCount;
+/// Create a copy of PersonTag
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$PersonTagCopyWith<PersonTag> get copyWith => _$PersonTagCopyWithImpl<PersonTag>(this as PersonTag, _$identity);
+
+  /// Serializes this PersonTag to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as PersonTag;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PersonTag&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.name, _this.name) || other.name == _this.name)&&(identical(other.color, _this.color) || other.color == _this.color)&&(identical(other.personCount, _this.personCount) || other.personCount == _this.personCount));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as PersonTag;
+  return Object.hash(runtimeType,_this.id,_this.name,_this.color,_this.personCount);
+}
+
+@override
+String toString() {
+  final _this = this as PersonTag;
+  return 'PersonTag(id: ${_this.id}, name: ${_this.name}, color: ${_this.color}, personCount: ${_this.personCount})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $PersonTagCopyWith<$Res>  {
+  factory $PersonTagCopyWith(PersonTag value, $Res Function(PersonTag) _then) = _$PersonTagCopyWithImpl;
+@useResult
+$Res call({
+ int id, String name, String? color,@JsonKey(defaultValue: 0) int personCount
+});
+
+
+
+
+}
+/// @nodoc
+class _$PersonTagCopyWithImpl<$Res>
+    implements $PersonTagCopyWith<$Res> {
+  _$PersonTagCopyWithImpl(this._self, this._then);
+
+  final PersonTag _self;
+  final $Res Function(PersonTag) _then;
+
+/// Create a copy of PersonTag
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? name = null,Object? color = freezed,Object? personCount = null,}) {
+  return _then(PersonTag(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as int,name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
+as String,color: freezed == color ? _self.color : color // ignore: cast_nullable_to_non_nullable
+as String?,personCount: null == personCount ? _self.personCount : personCount // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [PersonTag].
+extension PersonTagPatterns on PersonTag {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _PersonTag value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _PersonTag() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _PersonTag value)  $default,){
+final _that = this;
+switch (_that) {
+case _PersonTag():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _PersonTag value)?  $default,){
+final _that = this;
+switch (_that) {
+case _PersonTag() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int id,  String name,  String? color, @JsonKey(defaultValue: 0)  int personCount)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _PersonTag() when $default != null:
+return $default(_that.id,_that.name,_that.color,_that.personCount);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int id,  String name,  String? color, @JsonKey(defaultValue: 0)  int personCount)  $default,) {final _that = this;
+switch (_that) {
+case _PersonTag():
+return $default(_that.id,_that.name,_that.color,_that.personCount);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int id,  String name,  String? color, @JsonKey(defaultValue: 0)  int personCount)?  $default,) {final _that = this;
+switch (_that) {
+case _PersonTag() when $default != null:
+return $default(_that.id,_that.name,_that.color,_that.personCount);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _PersonTag implements PersonTag {
+  const _PersonTag({required this.id, required this.name, this.color, @JsonKey(defaultValue: 0) required this.personCount});
+  factory _PersonTag.fromJson(Map<String, dynamic> json) => _$PersonTagFromJson(json);
+
+@override final  int id;
+@override final  String name;
+/// A 7-character hex string, e.g. `#dcfce7`, or null for the default chip
+/// colour. Resolve with `parseHexColor`.
+@override final  String? color;
+@override@JsonKey(defaultValue: 0) final  int personCount;
+
+/// Create a copy of PersonTag
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$PersonTagCopyWith<_PersonTag> get copyWith => __$PersonTagCopyWithImpl<_PersonTag>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$PersonTagToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PersonTag&&(identical(other.id, id) || other.id == id)&&(identical(other.name, name) || other.name == name)&&(identical(other.color, color) || other.color == color)&&(identical(other.personCount, personCount) || other.personCount == personCount));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,id,name,color,personCount);
+}
+
+@override
+String toString() {
+    return 'PersonTag(id: $id, name: $name, color: $color, personCount: $personCount)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$PersonTagCopyWith<$Res> implements $PersonTagCopyWith<$Res> {
+  factory _$PersonTagCopyWith(_PersonTag value, $Res Function(_PersonTag) _then) = __$PersonTagCopyWithImpl;
+@override @useResult
+$Res call({
+ int id, String name, String? color,@JsonKey(defaultValue: 0) int personCount
+});
+
+
+
+
+}
+/// @nodoc
+class __$PersonTagCopyWithImpl<$Res>
+    implements _$PersonTagCopyWith<$Res> {
+  __$PersonTagCopyWithImpl(this._self, this._then);
+
+  final _PersonTag _self;
+  final $Res Function(_PersonTag) _then;
+
+/// Create a copy of PersonTag
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? name = null,Object? color = freezed,Object? personCount = null,}) {
+  return _then(_PersonTag(
+id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
+as int,name: null == name ? _self.name : name // ignore: cast_nullable_to_non_nullable
+as String,color: freezed == color ? _self.color : color // ignore: cast_nullable_to_non_nullable
+as String?,personCount: null == personCount ? _self.personCount : personCount // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 

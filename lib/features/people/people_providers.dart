@@ -38,6 +38,20 @@ final personPicturesProvider =
   (ref, personId) => ref.watch(peopleRepositoryProvider).pictures(personId),
 );
 
+/// The shared tag vocabulary.
+///
+/// Not user-scoped, like the people it describes. Kept alive rather than
+/// `autoDispose` for the same reason as [allPeopleProvider]: the filter bar,
+/// the chips on a person's page, the edit sheet and the manage sheet all read
+/// it.
+///
+/// There is deliberately no per-person tags provider — a person's tags ride on
+/// [Person.tags], so the detail page needs no second request and no second
+/// `AsyncValue` to unwrap.
+final personTagsProvider = FutureProvider<List<PersonTag>>(
+  (ref) => ref.watch(personTagsRepositoryProvider).all(),
+);
+
 /// Invalidates everything a write to [personId] can affect.
 ///
 /// A relationship write is the reason this exists: the server fans one create
@@ -49,5 +63,19 @@ void invalidatePerson(WidgetRef ref, String personId) {
   ref.invalidate(personNotesProvider(personId));
   ref.invalidate(personRelationshipsProvider(personId));
   ref.invalidate(personPicturesProvider(personId));
+  ref.invalidate(allPeopleProvider);
+  // Attaching or detaching moves that tag's server-side `personCount`, which
+  // the manage sheet shows.
+  ref.invalidate(personTagsProvider);
+}
+
+/// Invalidates what a change to the tag *vocabulary* affects.
+///
+/// Wider than it looks: tags are embedded on every [Person], so a rename or a
+/// recolour leaves the old value on every person already in the cache. The
+/// directory has to be re-read, not just the vocabulary — this is the price of
+/// embedding, and it must be paid at every vocabulary write.
+void invalidateTags(WidgetRef ref) {
+  ref.invalidate(personTagsProvider);
   ref.invalidate(allPeopleProvider);
 }

@@ -50,6 +50,10 @@ final relationshipsRepositoryProvider = Provider(
   (ref) => RelationshipsRepository(ref.watch(apiClientProvider)),
 );
 
+final personTagsRepositoryProvider = Provider(
+  (ref) => PersonTagsRepository(ref.watch(apiClientProvider)),
+);
+
 final userPreferenceRepositoryProvider = Provider(
   (ref) => UserPreferenceRepository(ref.watch(apiClientProvider)),
 );

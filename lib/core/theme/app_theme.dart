@@ -9,6 +9,23 @@ const Color kDefaultPrimary = Color(0xFF10B981);
 /// Category colours, list colours and `primaryColor` all arrive this way. The
 /// API validates category colours against `^#[0-9A-Fa-f]{6}$` but list colours
 /// are unvalidated, so this has to tolerate junk.
+/// The eight swatches the web editor offers, in its order. Pastels, because a
+/// list's colour is a background wash on the web card rather than an accent.
+///
+/// Lives here rather than in the todo feature that first needed it, because
+/// people tags pick from the same palette and reaching across features for a
+/// constant — worse, into a *screen* — is not worth saving a file.
+const List<({String name, String? value})> kListColors = [
+  (name: 'None', value: null),
+  (name: 'Red', value: '#fee2e2'),
+  (name: 'Orange', value: '#ffedd5'),
+  (name: 'Yellow', value: '#fef9c3'),
+  (name: 'Green', value: '#dcfce7'),
+  (name: 'Blue', value: '#dbeafe'),
+  (name: 'Purple', value: '#e9d5ff'),
+  (name: 'Pink', value: '#fce7f3'),
+];
+
 Color? parseHexColor(String? hex) {
   if (hex == null) return null;
   var value = hex.trim();

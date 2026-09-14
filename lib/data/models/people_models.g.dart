@@ -13,6 +13,11 @@ _Person _$PersonFromJson(Map<String, dynamic> json) => _Person(
   vietnameseName: json['vietnameseName'] as String?,
   birthDate: const WallClock().fromJson(json['birthDate'] as String?),
   profilePictureUrl: json['profilePictureUrl'] as String?,
+  tags:
+      (json['tags'] as List<dynamic>?)
+          ?.map((e) => PersonTag.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+      const <PersonTag>[],
 );
 
 Map<String, dynamic> _$PersonToJson(_Person instance) => <String, dynamic>{
@@ -22,7 +27,23 @@ Map<String, dynamic> _$PersonToJson(_Person instance) => <String, dynamic>{
   'vietnameseName': instance.vietnameseName,
   'birthDate': const WallClock().toJson(instance.birthDate),
   'profilePictureUrl': instance.profilePictureUrl,
+  'tags': instance.tags,
 };
+
+_PersonTag _$PersonTagFromJson(Map<String, dynamic> json) => _PersonTag(
+  id: (json['id'] as num).toInt(),
+  name: json['name'] as String,
+  color: json['color'] as String?,
+  personCount: (json['personCount'] as num?)?.toInt() ?? 0,
+);
+
+Map<String, dynamic> _$PersonTagToJson(_PersonTag instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'name': instance.name,
+      'color': instance.color,
+      'personCount': instance.personCount,
+    };
 
 _UpcomingBirthday _$UpcomingBirthdayFromJson(Map<String, dynamic> json) =>
     _UpcomingBirthday(

@@ -4,18 +4,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
-import '../../data/models/todo_models.dart';
-import 'todo_screen.dart';
+import '../../data/models/people_models.dart';
+import 'people_providers.dart';
+import 'people_screen.dart';
 
-/// Labels on one list, and the label vocabulary behind them.
+/// Tags on one person, and the tag vocabulary behind them.
 ///
-/// The web keeps these in two places — a multiselect inside the list editor and
-/// a separate manage dialog. There is little enough of either to hold them in
-/// one sheet: tick a label to attach it, use its menu to rename, recolour or
-/// delete it everywhere.
-Future<void> showTodoLabelsSheet(
+/// A port of `todo_labels_sheet.dart`, which already solved the same two jobs in
+/// one place: tick a tag to put it on the person, use its menu to rename,
+/// recolour or delete it everywhere.
+///
+/// Pass [person] to attach and detach. Omit it — from the "Manage tags" action
+/// on the people screen — and the same list renders without checkboxes, purely
+/// as the vocabulary editor. That one parameter is why there is no separate
+/// manage screen.
+Future<void> showPersonTagsSheet(
   BuildContext context, {
-  required TodoList list,
+  Person? person,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -27,31 +32,35 @@ Future<void> showTodoLabelsSheet(
       initialChildSize: 0.6,
       maxChildSize: 0.9,
       builder: (context, controller) =>
-          _LabelsSheet(list: list, scrollController: controller),
+          PersonTagList(person: person, scrollController: controller),
     ),
   );
 }
 
-class _LabelsSheet extends ConsumerStatefulWidget {
-  const _LabelsSheet({required this.list, required this.scrollController});
+/// The tag list itself, exposed so a widget test can pump it without a
+/// navigator or a modal route.
+class PersonTagList extends ConsumerStatefulWidget {
+  const PersonTagList({super.key, this.person, this.scrollController});
 
-  final TodoList list;
-  final ScrollController scrollController;
+  /// Null renders the vocabulary alone, with no checkboxes and no attaching.
+  final Person? person;
+  final ScrollController? scrollController;
 
   @override
-  ConsumerState<_LabelsSheet> createState() => _LabelsSheetState();
+  ConsumerState<PersonTagList> createState() => _PersonTagListState();
 }
 
-class _LabelsSheetState extends ConsumerState<_LabelsSheet> {
-  /// Attached label ids, held locally so a tick registers immediately — each
-  /// attach and detach is its own request, and the list is not re-read until
+class _PersonTagListState extends ConsumerState<PersonTagList> {
+  /// Attached tag ids, held locally so a tick registers immediately — each
+  /// attach and detach is its own request, and the person is not re-read until
   /// the sheet closes.
-  late Set<int> _attached =
-      widget.list.labels.map((label) => label.id).toSet();
+  late Set<int> _attached = {...?widget.person?.tags.map((tag) => tag.id)};
+
+  bool get _attaching => widget.person != null;
 
   @override
   Widget build(BuildContext context) {
-    final labels = ref.watch(todoLabelsProvider);
+    final tags = ref.watch(personTagsProvider);
 
     return ListView(
       controller: widget.scrollController,
@@ -63,22 +72,24 @@ class _LabelsSheetState extends ConsumerState<_LabelsSheet> {
             children: [
               Expanded(
                 child: Text(
-                  'Labels',
+                  _attaching ? 'Tags for ${widget.person!.firstName}' : 'Tags',
                   style: Theme.of(context)
                       .textTheme
                       .titleMedium
                       ?.copyWith(fontWeight: FontWeight.w700),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               TextButton.icon(
-                onPressed: _createLabel,
+                onPressed: _createTag,
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('New'),
               ),
             ],
           ),
         ),
-        switch (labels) {
+        switch (tags) {
           AsyncError(:final error) => Padding(
               padding: const EdgeInsets.all(20),
               child: Text(
@@ -93,18 +104,18 @@ class _LabelsSheetState extends ConsumerState<_LabelsSheet> {
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 8, 20, 20),
               child: Text(
-                'No labels yet. Create one to group lists across the todo '
-                'screen.',
+                'No tags yet. Create one to group people — "Pickleball '
+                'Friends", say — and filter the directory by it.',
               ),
             ),
           AsyncValue(value: final data) => Column(
               children: [
-                for (final label in data!) _LabelRow(
-                  label: label,
-                  attached: _attached.contains(label.id),
-                  onToggle: () => _toggle(label),
-                  onEdit: () => _editLabel(label),
-                  onDelete: () => _deleteLabel(label),
+                for (final tag in data!) _TagRow(
+                  tag: tag,
+                  attached: _attached.contains(tag.id),
+                  onToggle: _attaching ? () => _toggle(tag) : null,
+                  onEdit: () => _editTag(tag),
+                  onDelete: () => _deleteTag(tag),
                 ),
               ],
             ),
@@ -113,80 +124,88 @@ class _LabelsSheetState extends ConsumerState<_LabelsSheet> {
     );
   }
 
-  Future<void> _toggle(TodoLabel label) async {
-    final repository = ref.read(todoRepositoryProvider);
-    final attaching = !_attached.contains(label.id);
+  Future<void> _toggle(PersonTag tag) async {
+    final person = widget.person!;
+    final repository = ref.read(personTagsRepositoryProvider);
+    final attaching = !_attached.contains(tag.id);
     setState(() {
       if (attaching) {
-        _attached = {..._attached, label.id};
+        _attached = {..._attached, tag.id};
       } else {
-        _attached = {..._attached}..remove(label.id);
+        _attached = {..._attached}..remove(tag.id);
       }
     });
 
     try {
       if (attaching) {
-        await repository.addLabelToList(widget.list.id, label.id);
+        await repository.attach(person.id, tag.id);
       } else {
-        await repository.removeLabelFromList(widget.list.id, label.id);
+        await repository.detach(person.id, tag.id);
       }
     } on ApiException catch (error) {
       if (!mounted) return;
       // The optimistic tick is now a lie; put it back.
       setState(() {
         if (attaching) {
-          _attached = {..._attached}..remove(label.id);
+          _attached = {..._attached}..remove(tag.id);
         } else {
-          _attached = {..._attached, label.id};
+          _attached = {..._attached, tag.id};
         }
       });
       _toast(error.message);
       return;
     }
-    ref.invalidate(todoLabelsProvider);
+    if (!mounted) return;
+    invalidatePerson(ref, person.id);
   }
 
-  Future<void> _createLabel() async {
-    final result = await _promptForLabel(context);
+  Future<void> _createTag() async {
+    final result = await promptForPersonTag(context);
     if (result == null) return;
 
     try {
       await ref
-          .read(todoRepositoryProvider)
-          .createLabel(result.name, color: result.color);
+          .read(personTagsRepositoryProvider)
+          .create(result.name, color: result.color);
     } on ApiException catch (error) {
       if (mounted) _toast(error.message);
       return;
     }
-    ref.invalidate(todoLabelsProvider);
+    if (mounted) invalidateTags(ref);
   }
 
-  Future<void> _editLabel(TodoLabel label) async {
-    final result = await _promptForLabel(context, label: label);
+  Future<void> _editTag(PersonTag tag) async {
+    final result = await promptForPersonTag(context, tag: tag);
     if (result == null) return;
 
     try {
       await ref
-          .read(todoRepositoryProvider)
-          .updateLabel(label.id, name: result.name, color: result.color);
+          .read(personTagsRepositoryProvider)
+          .update(tag.id, name: result.name, color: result.color);
     } on ApiException catch (error) {
       if (mounted) _toast(error.message);
       return;
     }
-    ref.invalidate(todoLabelsProvider);
+    // Wider than the vocabulary: the old name and colour are embedded on every
+    // person already loaded, so the directory has to be re-read too.
+    if (mounted) invalidateTags(ref);
   }
 
-  Future<void> _deleteLabel(TodoLabel label) async {
+  Future<void> _deleteTag(PersonTag tag) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Delete "${label.name}"?'),
+        title: Text('Delete "${tag.name}"?'),
         content: Text(
-          label.listCount == 0
-              ? 'This label is not on any list.'
-              : 'It comes off ${label.listCount} '
-                  '${label.listCount == 1 ? 'list' : 'lists'}. The lists '
-                  'themselves are untouched.',
+          tag.personCount == 0
+              ? 'This tag is not on anyone.'
+              // Spelled out because the vocabulary is shared: unlike a todo
+              // label this is not "your" tag, and the delete is not undoable
+              // from anyone else's phone either.
+              : 'It comes off ${tag.personCount} '
+                  '${tag.personCount == 1 ? 'person' : 'people'} — for '
+                  'everyone, not just you. The people themselves are '
+                  'untouched.',
         ),
         actions: [
           TextButton(
@@ -203,33 +222,37 @@ class _LabelsSheetState extends ConsumerState<_LabelsSheet> {
     if (confirmed != true) return;
 
     try {
-      await ref.read(todoRepositoryProvider).deleteLabel(label.id);
+      await ref.read(personTagsRepositoryProvider).delete(tag.id);
     } on ApiException catch (error) {
       if (mounted) _toast(error.message);
       return;
     }
-    setState(() => _attached = {..._attached}..remove(label.id));
-    ref.invalidate(todoLabelsProvider);
-    // The filter bar may be pointing at a label that no longer exists.
-    ref.read(labelFilterProvider.notifier).value = null;
+    if (!mounted) return;
+    setState(() => _attached = {..._attached}..remove(tag.id));
+    invalidateTags(ref);
+    // The filter bar may be pointing at a tag that no longer exists.
+    ref.read(tagFilterProvider.notifier).value = null;
   }
 
   void _toast(String message) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(message)));
 }
 
-class _LabelRow extends StatelessWidget {
-  const _LabelRow({
-    required this.label,
+class _TagRow extends StatelessWidget {
+  const _TagRow({
+    required this.tag,
     required this.attached,
     required this.onToggle,
     required this.onEdit,
     required this.onDelete,
   });
 
-  final TodoLabel label;
+  final PersonTag tag;
   final bool attached;
-  final VoidCallback onToggle;
+
+  /// Null when the sheet was opened without a person — the vocabulary is being
+  /// managed, not applied, so there is nothing to tick.
+  final VoidCallback? onToggle;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -239,23 +262,37 @@ class _LabelRow extends StatelessWidget {
 
     return ListTile(
       onTap: onToggle,
-      leading: Checkbox(value: attached, onChanged: (_) => onToggle()),
+      leading: onToggle == null
+          ? Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: parseHexColor(tag.color) ?? scheme.outlineVariant,
+                shape: BoxShape.circle,
+              ),
+            )
+          : Checkbox(
+              value: attached,
+              onChanged: (_) => onToggle!(),
+            ),
       title: Row(
         children: [
-          Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color: parseHexColor(label.color) ?? scheme.outlineVariant,
-              shape: BoxShape.circle,
+          if (onToggle != null) ...[
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: parseHexColor(tag.color) ?? scheme.outlineVariant,
+                shape: BoxShape.circle,
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(child: Text(label.name)),
+            const SizedBox(width: 8),
+          ],
+          Flexible(child: Text(tag.name)),
         ],
       ),
       subtitle: Text(
-        '${label.listCount} ${label.listCount == 1 ? 'list' : 'lists'}',
+        '${tag.personCount} ${tag.personCount == 1 ? 'person' : 'people'}',
         style: TextStyle(fontSize: 12, color: scheme.mutedForeground),
       ),
       trailing: PopupMenuButton<String>(
@@ -270,29 +307,29 @@ class _LabelRow extends StatelessWidget {
   }
 }
 
-/// Name and colour for a new or edited label.
-Future<({String name, String? color})?> _promptForLabel(
+/// Name and colour for a new or edited tag.
+Future<({String name, String? color})?> promptForPersonTag(
   BuildContext context, {
-  TodoLabel? label,
+  PersonTag? tag,
 }) {
   return showDialog<({String name, String? color})>(
     context: context,
-    builder: (context) => _LabelDialog(label: label),
+    builder: (context) => _TagDialog(tag: tag),
   );
 }
 
-class _LabelDialog extends StatefulWidget {
-  const _LabelDialog({this.label});
+class _TagDialog extends StatefulWidget {
+  const _TagDialog({this.tag});
 
-  final TodoLabel? label;
+  final PersonTag? tag;
 
   @override
-  State<_LabelDialog> createState() => _LabelDialogState();
+  State<_TagDialog> createState() => _TagDialogState();
 }
 
-class _LabelDialogState extends State<_LabelDialog> {
-  late final _name = TextEditingController(text: widget.label?.name);
-  late String? _color = widget.label?.color;
+class _TagDialogState extends State<_TagDialog> {
+  late final _name = TextEditingController(text: widget.tag?.name);
+  late String? _color = widget.tag?.color;
 
   @override
   void dispose() {
@@ -303,12 +340,12 @@ class _LabelDialogState extends State<_LabelDialog> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    // The list swatches without "None" — the same palette the web label editor
+    // The shared swatches without "None" — the same palette the label editor
     // offers.
     final options = kListColors.skip(1).toList();
 
     return AlertDialog(
-      title: Text(widget.label == null ? 'New label' : 'Edit label'),
+      title: Text(widget.tag == null ? 'New tag' : 'Edit tag'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

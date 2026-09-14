@@ -233,6 +233,72 @@ class RelationshipsRepository {
       _api.delete('/people/$personId/relationships/$relationshipId');
 }
 
+/// The shared people tag vocabulary, and the routes that attach it.
+///
+/// Not user-scoped: there is one vocabulary for the whole family, so [update]
+/// and [delete] change what everyone sees.
+class PersonTagsRepository {
+  const PersonTagsRepository(this._api);
+
+  final ApiClient _api;
+
+  /// Every tag, ordered by name, each with a real `personCount`.
+  Future<List<PersonTag>> all() async => decodeList(
+        await _api.get<dynamic>('/person-tags'),
+        PersonTag.fromJson,
+      );
+
+  /// Conflicts (409) when a tag of this name already exists - the comparison is
+  /// case-insensitive server-side, so "Pickleball" collides with "pickleball".
+  Future<PersonTag?> create(String name, {String? color}) async =>
+      decodeOrNull(
+        await _api.post<dynamic>(
+          '/person-tags',
+          body: {'name': name, 'color': ?color},
+        ),
+        PersonTag.fromJson,
+      );
+
+  /// Renames or recolours for everyone. Conflicts (409) on a duplicate name.
+  Future<PersonTag?> update(int tagId, {String? name, String? color}) async =>
+      decodeOrNull(
+        await _api.put<dynamic>(
+          '/person-tags/$tagId',
+          body: {'name': ?name, 'color': ?color},
+        ),
+        PersonTag.fromJson,
+      );
+
+  /// Deletes the tag and takes it off every person carrying it, for every user.
+  /// The people themselves are untouched.
+  Future<void> delete(int tagId) => _api.delete('/person-tags/$tagId');
+
+  /// Rarely needed - the same tags ride on [Person.tags]. Here for callers that
+  /// hold only an id.
+  Future<List<PersonTag>> forPerson(String personId) async => decodeList(
+        await _api.get<dynamic>('/people/$personId/tags'),
+        PersonTag.fromJson,
+      );
+
+  /// **Idempotent**: attaching a tag the person already carries succeeds and
+  /// changes nothing. That differs from the event-category endpoints, which
+  /// conflict, and it is what lets a picker toggle optimistically without a
+  /// correct tick being rolled back by a 409.
+  Future<void> attach(String personId, int tagId) =>
+      _api.post<dynamic>('/people/$personId/tags/$tagId');
+
+  /// Idempotent, as [attach] is.
+  Future<void> detach(String personId, int tagId) =>
+      _api.delete('/people/$personId/tags/$tagId');
+
+  /// Everyone carrying [tagId]. The directory is filtered client-side from
+  /// `allPeopleProvider`, so this is for callers without that list loaded.
+  Future<List<Person>> peopleWithTag(int tagId) async => decodeList(
+        await _api.get<dynamic>('/person-tags/$tagId/people'),
+        Person.fromJson,
+      );
+}
+
 /// `GET`/`PUT /api/user-preferences`.
 class UserPreferenceRepository {
   const UserPreferenceRepository(this._api);

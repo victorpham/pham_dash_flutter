@@ -24,6 +24,23 @@ abstract class Person with _$Person {
     /// Resolve with `AppConfig.mediaUrl`. Not updatable through `PUT` - use the
     /// dedicated upload endpoint, which also deletes the previous file.
     String? profilePictureUrl,
+
+    /// Embedded by `GET /api/people` and `GET /api/people/{id}`, which is what
+    /// lets the directory filter by tag without a request per person. Empty
+    /// wherever a person rides as a nested object - `Note.person`, event
+    /// attendees - because the server does not load them there, and empty on
+    /// what `create`/`update` return, which is why writes invalidate instead.
+    ///
+    /// Each entry carries `personCount: 0`; the real count is on
+    /// `GET /api/person-tags`.
+    ///
+    /// `@Default` rather than the `required` + `@JsonKey(defaultValue:)` that
+    /// [TodoList.labels] uses, and deliberately so: `Person` is built by name in
+    /// five test files, and a required field would break every one of them for
+    /// no gain. `@Default` gives json_serializable the same `defaultValue`, so a
+    /// missing or null `tags` still decodes to `[]`. Do not "tidy" this to
+    /// `required` for symmetry.
+    @Default(<PersonTag>[]) List<PersonTag> tags,
   }) = _Person;
 
   const Person._();
@@ -94,6 +111,33 @@ abstract class Person with _$Person {
     if (!hadBirthday) years--;
     return years < 0 ? null : years;
   }
+
+  bool hasTag(int tagId) => tags.any((tag) => tag.id == tagId);
+}
+
+/// A shared label applied to people - "Pickleball Friends".
+///
+/// Unrelated to the calendar's `EventCategory` or its per-event tags. Like
+/// [Person] itself this is **not user-scoped**: one vocabulary for the whole
+/// family, so a rename, recolour or delete is visible to everyone.
+///
+/// [personCount] is real only on `GET /api/person-tags`. The copies embedded on
+/// a [Person] carry `0`, because the server does not load the assignments there
+/// - the same way `TodoList.labels` carries `listCount: 0`.
+@freezed
+abstract class PersonTag with _$PersonTag {
+  const factory PersonTag({
+    required int id,
+    required String name,
+
+    /// A 7-character hex string, e.g. `#dcfce7`, or null for the default chip
+    /// colour. Resolve with `parseHexColor`.
+    String? color,
+    @JsonKey(defaultValue: 0) required int personCount,
+  }) = _PersonTag;
+
+  factory PersonTag.fromJson(Map<String, dynamic> json) =>
+      _$PersonTagFromJson(json);
 }
 
 /// `GET /api/people/upcoming-birthdays?count=N`.

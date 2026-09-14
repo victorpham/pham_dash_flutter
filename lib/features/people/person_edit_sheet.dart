@@ -12,6 +12,7 @@ import '../../core/ui/person_avatar.dart';
 import '../../data/models/people_models.dart';
 import 'people_providers.dart';
 import 'person_picture_gallery.dart';
+import 'person_tags_sheet.dart';
 
 /// The upload endpoint's ceiling. Checking here turns a 400 from the server
 /// into a sentence the user can act on.
@@ -62,6 +63,10 @@ class _PersonEditSheetState extends ConsumerState<PersonEditSheet> {
   /// The picture chosen but not yet uploaded. On edit it uploads on save; on
   /// create it uploads once the person has an id.
   XFile? _pendingPicture;
+
+  /// Ticked tags. Like the picture these cannot be applied until the person
+  /// exists, so [_save] diffs this against the original after the write.
+  late Set<int> _tagIds = {...?widget.person?.tags.map((tag) => tag.id)};
 
   bool _saving = false;
 
@@ -192,6 +197,13 @@ class _PersonEditSheetState extends ConsumerState<PersonEditSheet> {
                 ),
               ),
 
+            const SizedBox(height: 16),
+            _TagPicker(
+              selected: _tagIds,
+              enabled: !_saving,
+              onChanged: (ids) => setState(() => _tagIds = ids),
+            ),
+
             const SizedBox(height: 24),
             FilledButton(
               onPressed: _saving ? null : _save,
@@ -286,6 +298,29 @@ class _PersonEditSheetState extends ConsumerState<PersonEditSheet> {
               birthDate: _birthDate,
             );
 
+      if (saved != null) {
+        // A diff, not a replace: on edit only the changes go over the wire, and
+        // on create `original` is empty so everything ticked is an attach. Like
+        // the picture upload below, there is nowhere to put these until the
+        // person has an id — which is why it happens here and not in the write
+        // above. Cheap JSON calls first, so a slow multi-megabyte upload does
+        // not delay the chips appearing.
+        //
+        // A failure here throws into the catch below and leaves a created but
+        // partially tagged person. That is knowingly the same trade the picture
+        // upload has always made: the person exists, the sheet toasts, and the
+        // user finishes from the detail page.
+        final original =
+            widget.person?.tags.map((tag) => tag.id).toSet() ?? const <int>{};
+        final tags = ref.read(personTagsRepositoryProvider);
+        for (final tagId in _tagIds.difference(original)) {
+          await tags.attach(saved.id, tagId);
+        }
+        for (final tagId in original.difference(_tagIds)) {
+          await tags.detach(saved.id, tagId);
+        }
+      }
+
       final picture = _pendingPicture;
       if (saved != null && picture != null) {
         // PUT does not carry profilePictureUrl, so the upload is always a
@@ -311,4 +346,90 @@ class _PersonEditSheetState extends ConsumerState<PersonEditSheet> {
 
   void _toast(String message) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(message)));
+}
+
+/// Ticks tags on and off for the person being edited.
+///
+/// Purely local — nothing is sent until save, because on a create there is no
+/// person id to attach to yet. "New tag" is the exception: the vocabulary is
+/// shared and creating one is its own write, so it goes over the wire straight
+/// away and is then ticked.
+class _TagPicker extends ConsumerWidget {
+  const _TagPicker({
+    required this.selected,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final Set<int> selected;
+  final bool enabled;
+  final ValueChanged<Set<int>> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final tags = ref.watch(personTagsProvider).value ?? const <PersonTag>[];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Tags',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: scheme.mutedForeground,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final tag in tags)
+              FilterChip(
+                label: Text(tag.name),
+                selected: selected.contains(tag.id),
+                backgroundColor: parseHexColor(tag.color),
+                onSelected: enabled
+                    ? (isSelected) => onChanged(
+                          isSelected
+                              ? {...selected, tag.id}
+                              : ({...selected}..remove(tag.id)),
+                        )
+                    : null,
+              ),
+            ActionChip(
+              avatar: const Icon(Icons.add, size: 16),
+              label: const Text('New tag'),
+              onPressed: enabled ? () => _create(context, ref) : null,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _create(BuildContext context, WidgetRef ref) async {
+    final result = await promptForPersonTag(context);
+    if (result == null) return;
+
+    final PersonTag? created;
+    try {
+      created = await ref
+          .read(personTagsRepositoryProvider)
+          .create(result.name, color: result.color);
+    } on ApiException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return;
+    }
+
+    ref.invalidate(personTagsProvider);
+    // Ticked for the person being edited, so creating one from here does what
+    // it looks like it does.
+    if (created != null) onChanged({...selected, created.id});
+  }
 }

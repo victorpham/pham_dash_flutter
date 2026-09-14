@@ -23,6 +23,9 @@ Future<ProviderContainer> _pumpPeople(WidgetTester tester) async {
     overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
       allPeopleProvider.overrideWith((ref) => _people),
+      // PeopleScreen sizes its app bar on the tag vocabulary, so it has to be
+      // stubbed or the screen reaches for the network.
+      personTagsProvider.overrideWith((ref) => const <PersonTag>[]),
     ],
   );
   addTearDown(container.dispose);

@@ -77,6 +77,7 @@ Future<void> _pump(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
         allPeopleProvider.overrideWith((ref) => _people),
+        personTagsProvider.overrideWith((ref) => const <PersonTag>[]),
         personProvider.overrideWith(
           (ref, id) => _people.firstWhere((person) => person.id == id),
         ),

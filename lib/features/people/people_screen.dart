@@ -11,6 +11,8 @@ import '../../core/ui/person_avatar.dart';
 import '../../data/models/people_models.dart';
 import 'people_providers.dart';
 import 'person_edit_sheet.dart';
+import 'person_tag_counts.dart';
+import 'person_tags_sheet.dart';
 
 /// The two data-hygiene filters, persisted so they survive a restart.
 ///
@@ -21,6 +23,16 @@ const String _missingBirthdateKey = 'peopleFilterMissingBirthdate';
 const String _missingPictureKey = 'peopleFilterMissingProfilePicture';
 
 final _searchProvider = valueProvider<String>(() => '');
+
+/// The tag the directory is narrowed to, or null for "all tags".
+///
+/// Public so `person_tags_sheet.dart` can clear it after deleting a tag.
+///
+/// Deliberately **not** persisted, unlike the two data-hygiene flags above:
+/// those are work queues you want back after a restart, a tag filter is a lens.
+/// A persisted one would also come back pointing at a tag somebody deleted on
+/// the web in the meantime.
+final tagFilterProvider = valueProvider<int?>(() => null);
 
 class _StoredFlag extends Notifier<bool> {
   _StoredFlag(this._key);
@@ -51,7 +63,8 @@ final _isFilteredProvider = Provider.autoDispose<bool>(
   (ref) =>
       ref.watch(_searchProvider).trim().isNotEmpty ||
       ref.watch(missingBirthdateFilterProvider) ||
-      ref.watch(missingPictureFilterProvider),
+      ref.watch(missingPictureFilterProvider) ||
+      ref.watch(tagFilterProvider) != null,
 );
 
 /// Drops the search text and both data-hygiene filters.
@@ -62,6 +75,7 @@ void _clearAll(WidgetRef ref) {
   ref.read(_searchProvider.notifier).value = '';
   ref.read(missingBirthdateFilterProvider.notifier).set(false);
   ref.read(missingPictureFilterProvider.notifier).set(false);
+  ref.read(tagFilterProvider.notifier).value = null;
 }
 
 /// Orders the directory by whose birthday is next.
@@ -104,10 +118,12 @@ final filteredPeopleProvider = Provider.autoDispose<List<Person>>((ref) {
   final search = ref.watch(_searchProvider).trim().toLowerCase();
   final missingBirthdateOnly = ref.watch(missingBirthdateFilterProvider);
   final missingPictureOnly = ref.watch(missingPictureFilterProvider);
+  final tagId = ref.watch(tagFilterProvider);
 
   return people.where((person) {
     if (missingBirthdateOnly && person.birthDate != null) return false;
     if (missingPictureOnly && person.profilePictureUrl != null) return false;
+    if (tagId != null && !person.hasTag(tagId)) return false;
     if (search.isEmpty) return true;
     return person.fullName.toLowerCase().contains(search) ||
         (person.vietnameseName ?? '').toLowerCase().contains(search);
@@ -115,12 +131,22 @@ final filteredPeopleProvider = Provider.autoDispose<List<Person>>((ref) {
     ..sort(comparePeopleByUpcomingBirthday);
 });
 
+/// The search box plus the two data-hygiene chips.
+const double _filtersHeight = 104;
+
+/// ...plus the tag filter bar, which is only built when tags exist — reserving
+/// the row unconditionally would leave 46px of dead space under the search box
+/// for anyone who has not made a tag yet.
+const double _filtersHeightWithTags = 150;
+
 class PeopleScreen extends ConsumerWidget {
   const PeopleScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final people = ref.watch(allPeopleProvider);
+    final hasTags =
+        (ref.watch(personTagsProvider).value ?? const []).isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -134,10 +160,20 @@ class PeopleScreen extends ConsumerWidget {
               icon: const Icon(Icons.filter_alt_off_outlined),
               onPressed: () => _clearAll(ref),
             ),
+          // Permanent, because the filter bar below disappears when there are
+          // no tags — this is how the first one gets made.
+          IconButton(
+            tooltip: 'Manage tags',
+            icon: const Icon(Icons.sell_outlined),
+            onPressed: () => showPersonTagsSheet(context),
+          ),
         ],
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(104),
-          child: _SearchAndFilters(),
+        bottom: PreferredSize(
+          // Grows one frame late on first open, while the vocabulary loads.
+          preferredSize: Size.fromHeight(
+            hasTags ? _filtersHeightWithTags : _filtersHeight,
+          ),
+          child: const _SearchAndFilters(),
         ),
       ),
       floatingActionButton: FloatingActionButton(
@@ -287,6 +323,69 @@ class _SearchAndFiltersState extends ConsumerState<_SearchAndFilters> {
               ),
             ],
           ),
+          const _TagFilterBar(),
+        ],
+      ),
+    );
+  }
+}
+
+/// Narrows the directory to one tag.
+///
+/// Modelled on the todo screen's label bar, with one difference: the counts are
+/// derived from the loaded directory rather than read off `tag.personCount`.
+/// See [PersonTagCounts] for why.
+class _TagFilterBar extends ConsumerWidget {
+  const _TagFilterBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tags = ref.watch(personTagsProvider).value ?? const <PersonTag>[];
+    // Nothing at all rather than an empty 46px strip — PeopleScreen sizes the
+    // app bar on the same condition.
+    if (tags.isEmpty) return const SizedBox.shrink();
+
+    final selected = ref.watch(tagFilterProvider);
+    final counts = PersonTagCounts.from(
+      ref.watch(allPeopleProvider).value ?? const <Person>[],
+    );
+
+    return SizedBox(
+      height: 46,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: FilterChip(
+              label: const Text('All'),
+              selected: selected == null,
+              onSelected: (_) =>
+                  ref.read(tagFilterProvider.notifier).value = null,
+            ),
+          ),
+          for (final tag in tags)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: FilterChip(
+                label: Text('${tag.name} (${counts.of(tag.id)})'),
+                // Compares against the loaded vocabulary, so a filter left
+                // pointing at a tag deleted elsewhere simply shows nothing
+                // selected. Checked passively — never write to a provider from
+                // a build method.
+                selected: selected == tag.id,
+                backgroundColor: parseHexColor(tag.color),
+                onSelected: (isSelected) => ref
+                    .read(tagFilterProvider.notifier)
+                    .value = isSelected ? tag.id : null,
+              ),
+            ),
+          ActionChip(
+            avatar: const Icon(Icons.tune, size: 16),
+            label: const Text('Manage'),
+            onPressed: () => showPersonTagsSheet(context),
+          ),
         ],
       ),
     );
@@ -304,12 +403,46 @@ class _PersonRow extends ConsumerWidget {
     final birthDate = person.birthDate;
     final age = person.age;
     final daysUntil = person.daysUntilBirthday;
+    // The sort already floats today's birthdays to the top; this is what says
+    // *why* they are up there. Three signals, because one pill is easy to skim
+    // past: a tinted row, a cake on the avatar, and a filled pill.
+    final isBirthday = daysUntil == 0;
 
     return ListTile(
-      leading: PersonAvatar(
-        storedPath: person.profilePictureUrl,
-        initials: person.initials,
-        size: 44,
+      tileColor: isBirthday ? scheme.primary.withValues(alpha: 0.09) : null,
+      leading: SizedBox(
+        width: 44,
+        height: 44,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            PersonAvatar(
+              storedPath: person.profilePictureUrl,
+              initials: person.initials,
+              size: 44,
+            ),
+            if (isBirthday)
+              Positioned(
+                right: -3,
+                bottom: -3,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: scheme.primary,
+                    shape: BoxShape.circle,
+                    // Rings the badge against the avatar behind it, which may
+                    // be a photo of any colour.
+                    border: Border.all(color: scheme.surface, width: 1.5),
+                  ),
+                  child: Icon(
+                    Icons.cake,
+                    size: 11,
+                    color: scheme.onPrimary,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
       title: Row(
         children: [
@@ -324,7 +457,7 @@ class _PersonRow extends ConsumerWidget {
           // Without this the ordering reads as arbitrary — the countdown is
           // the sort key made visible.
           if (person.birthdayCountdown case final countdown?)
-            _CountdownPill(text: countdown, isToday: daysUntil == 0),
+            _CountdownPill(text: countdown, isToday: isBirthday),
         ],
       ),
       subtitle: Text(
@@ -337,7 +470,9 @@ class _PersonRow extends ConsumerWidget {
           else
             [
               DateFormat('MMM d').format(birthDate),
-              if (age != null) '$age',
+              // `age` has already rolled over by the time the day arrives, so
+              // on a birthday it is the age being turned.
+              if (age != null) isBirthday ? 'turns $age today' : '$age',
             ].join(' · '),
         ].join(' · '),
         style: TextStyle(fontSize: 12.5, color: scheme.mutedForeground),
@@ -391,7 +526,11 @@ class _PersonRow extends ConsumerWidget {
   }
 }
 
-/// The days-until pill, matching the one on the Birthdays dashboard tab.
+/// The days-until pill.
+///
+/// A tinted pill for anyone upcoming, as on the Birthdays dashboard tab. It
+/// diverges on the day itself: a filled pill reading `Birthday today`, because
+/// this list is read at a glance and a faint `Today!` is easy to miss.
 class _CountdownPill extends StatelessWidget {
   const _CountdownPill({required this.text, required this.isToday});
 
@@ -404,18 +543,27 @@ class _CountdownPill extends StatelessWidget {
     final color = isToday ? scheme.primary : scheme.onSurfaceVariant;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: EdgeInsets.symmetric(horizontal: isToday ? 9 : 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
+        color: isToday ? color : color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isToday) ...[
+            Icon(Icons.cake, size: 12, color: scheme.onPrimary),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            isToday ? 'Birthday today' : text,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: isToday ? scheme.onPrimary : color,
+            ),
+          ),
+        ],
       ),
     );
   }
