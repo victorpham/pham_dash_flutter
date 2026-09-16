@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/cache/cached_list.dart';
 import '../../core/providers.dart';
 import '../../data/models/people_models.dart';
 
@@ -9,9 +10,26 @@ import '../../data/models/people_models.dart';
 /// for every authenticated user. Kept alive rather than `autoDispose` because
 /// three separate pickers and the people screen all read it, and re-fetching
 /// the whole directory each time one opens is wasteful.
-final allPeopleProvider = FutureProvider<List<Person>>(
-  (ref) => ref.watch(peopleRepositoryProvider).all(),
+final allPeopleProvider =
+    AsyncNotifierProvider<AllPeopleNotifier, List<Person>>(
+  AllPeopleNotifier.new,
 );
+
+class AllPeopleNotifier extends AsyncNotifier<List<Person>>
+    with CachedList<Person> {
+  @override
+  Future<List<Person>> build() {
+    // Profile-picture URLs in the cached copy carry a signature that lasts
+    // two days; older than that, `PersonAvatar` shows initials until the
+    // fresh list lands. Acceptable for a few seconds of stale directory.
+    persistList(
+      'people',
+      fromJson: Person.fromJson,
+      toJson: (person) => person.toJson(),
+    );
+    return ref.watch(peopleRepositoryProvider).all();
+  }
+}
 
 /// One person, for the detail screen.
 ///
@@ -48,9 +66,23 @@ final personPicturesProvider =
 /// There is deliberately no per-person tags provider — a person's tags ride on
 /// [Person.tags], so the detail page needs no second request and no second
 /// `AsyncValue` to unwrap.
-final personTagsProvider = FutureProvider<List<PersonTag>>(
-  (ref) => ref.watch(personTagsRepositoryProvider).all(),
+final personTagsProvider =
+    AsyncNotifierProvider<PersonTagsNotifier, List<PersonTag>>(
+  PersonTagsNotifier.new,
 );
+
+class PersonTagsNotifier extends AsyncNotifier<List<PersonTag>>
+    with CachedList<PersonTag> {
+  @override
+  Future<List<PersonTag>> build() {
+    persistList(
+      'person_tags',
+      fromJson: PersonTag.fromJson,
+      toJson: (tag) => tag.toJson(),
+    );
+    return ref.watch(personTagsRepositoryProvider).all();
+  }
+}
 
 /// Invalidates everything a write to [personId] can affect.
 ///

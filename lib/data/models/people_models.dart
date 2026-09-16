@@ -18,6 +18,15 @@ abstract class Person with _$Person {
     required String firstName,
     required String lastName,
     String? vietnameseName,
+
+    /// One free-text line, capped at 300 characters by the column. Nothing
+    /// parses it: the detail screen copies it verbatim and hands it to a map
+    /// app as a search string.
+    ///
+    /// Treat **blank as absent**, not just null. Both clients normalise an
+    /// empty input to null before sending, but a value written before that was
+    /// true - or by anything else talking to the API - can still arrive as `""`.
+    String? homeAddress,
     @WallClock() DateTime? birthDate,
 
     /// Root-relative, e.g. `/uploads/profile-pictures/aB3xQ_20260101120000.jpg`.

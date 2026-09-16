@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_date.dart';
+import '../../core/cache/cached_list.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
@@ -13,16 +14,34 @@ import '../calendar/event_utils.dart';
 /// The next seven days of events, grouped under sticky date headers.
 ///
 /// Mirrors `CalendarEventsWidget.vue`.
-final upcomingEventsProvider =
-    FutureProvider.autoDispose<List<CalendarEvent>>((ref) async {
-  final now = DateTime.now();
-  final events = await ref.watch(calendarRepositoryProvider).events(
-        timeMin: ApiDate.startOfDay(now),
-        timeMax: ApiDate.startOfDay(now).add(const Duration(days: 7)),
-        maxResults: 20,
-      );
-  return EventUtils.hideTuMeetings(events);
-});
+final upcomingEventsProvider = AsyncNotifierProvider.autoDispose<
+    UpcomingEventsNotifier, List<CalendarEvent>>(UpcomingEventsNotifier.new);
+
+class UpcomingEventsNotifier extends AsyncNotifier<List<CalendarEvent>>
+    with CachedList<CalendarEvent> {
+  @override
+  Future<List<CalendarEvent>> build() async {
+    final today = ApiDate.startOfDay(DateTime.now());
+
+    // The cached window started on whatever day it was fetched. Anything that
+    // ended before today would otherwise sit under a stale "Today" header
+    // until the refresh lands.
+    persistList(
+      'schedule',
+      fromJson: CalendarEvent.fromJson,
+      toJson: (event) => event.toJson(),
+      trim: (events) =>
+          events.where((e) => !e.end.isBefore(today)).toList(growable: false),
+    );
+
+    final events = await ref.watch(calendarRepositoryProvider).events(
+          timeMin: today,
+          timeMax: today.add(const Duration(days: 7)),
+          maxResults: 20,
+        );
+    return EventUtils.hideTuMeetings(events);
+  }
+}
 
 class ScheduleTab extends ConsumerWidget {
   const ScheduleTab({super.key});

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -34,17 +35,110 @@ final weatherCityProvider =
 /// Four network calls sit behind this — geocoding, the NWS grid lookup and two
 /// forecasts — so it is deliberately not `autoDispose`: the tab is kept alive
 /// in the shell's indexed stack, and switching tabs should not re-run them.
-final weatherForecastProvider = FutureProvider<WeatherForecast?>((ref) async {
-  final city = ref.watch(weatherCityProvider);
-  if (city == null) return null;
-  return ref.watch(weatherRepositoryProvider).forecast(city);
-});
+/// What re-runs them is [WeatherForecastNotifier.refreshIfStale], which the
+/// tab calls each time it comes into view.
+final weatherForecastProvider =
+    AsyncNotifierProvider<WeatherForecastNotifier, WeatherForecast?>(
+  WeatherForecastNotifier.new,
+);
 
-class WeatherTab extends ConsumerWidget {
+class WeatherForecastNotifier extends AsyncNotifier<WeatherForecast?> {
+  /// NWS hourly forecasts update about hourly; fifteen minutes keeps a tab
+  /// checked throughout the day current without a fetch per glance.
+  static const Duration staleAfter = Duration(minutes: 15);
+
+  @override
+  Future<WeatherForecast?> build() async {
+    final city = ref.watch(weatherCityProvider);
+    if (city == null) return null;
+    return ref.watch(weatherRepositoryProvider).forecast(city);
+  }
+
+  /// Refetches unless the forecast on screen is younger than [staleAfter], a
+  /// fetch is already running, or there is no city to fetch for. A failed
+  /// last attempt counts as stale, so revisiting the tab retries it.
+  ///
+  /// A refresh, not an invalidate, so the old forecast stays on screen while
+  /// the new one loads - `AsyncView` skips the spinner for refreshes.
+  Future<void> refreshIfStale({DateTime? now}) async {
+    if (ref.read(weatherCityProvider) == null) return;
+    if (state.isLoading) return;
+
+    final fetchedAt = state.value?.fetchedAt;
+    if (fetchedAt != null &&
+        (now ?? DateTime.now()).difference(fetchedAt) < staleAfter) {
+      return;
+    }
+
+    ref.invalidateSelf();
+    try {
+      await future;
+    } on Object {
+      // The state carries it; the tab shows the banner over the old forecast.
+    }
+  }
+}
+
+class WeatherTab extends ConsumerStatefulWidget {
   const WeatherTab({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<WeatherTab> createState() => _WeatherTabState();
+}
+
+/// Refreshes on a visit - see [WeatherForecastNotifier.refreshIfStale].
+///
+/// "Visible" is read from [TickerMode]: go_router turns it off for the
+/// branches of its indexed stack that are not showing, and the Navigator
+/// turns it off under a pushed page, so one listener covers a switch to this
+/// tab and a return from People or the calendar alike. The tab stays mounted
+/// through all of that, which is why `initState` is not enough. The app
+/// coming back to the foreground changes neither, so that is listened for
+/// separately.
+class _WeatherTabState extends ConsumerState<WeatherTab> {
+  ValueListenable<TickerModeData>? _visible;
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle = AppLifecycleListener(onResume: _visited);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The notifier belongs to the nearest TickerMode ancestor, which can be
+    // swapped out, so re-subscribe whenever dependencies change - the same
+    // dance `TickerProviderStateMixin` does.
+    final notifier = TickerMode.getValuesNotifier(context);
+    if (notifier != _visible) {
+      _visible?.removeListener(_onVisibilityChanged);
+      _visible = notifier..addListener(_onVisibilityChanged);
+    }
+  }
+
+  void _onVisibilityChanged() {
+    if (!(_visible?.value.enabled ?? false)) return;
+    // TickerMode notifies from inside its own build, and invalidating a
+    // provider there is a setState during build. After the frame is fine.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _visited());
+  }
+
+  void _visited() {
+    if (!mounted || !(_visible?.value.enabled ?? true)) return;
+    ref.read(weatherForecastProvider.notifier).refreshIfStale();
+  }
+
+  @override
+  void dispose() {
+    _visible?.removeListener(_onVisibilityChanged);
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final city = ref.watch(weatherCityProvider);
     if (city == null) return const _CityPrompt();
 
@@ -56,6 +150,8 @@ class WeatherTab extends ConsumerWidget {
         value: forecast,
         onRetry: () => ref.invalidate(weatherForecastProvider),
         isEmpty: (data) => data == null,
+        // weather.gov has no database to wake; a slow forecast is just slow.
+        explainSlowLoad: false,
         emptyIcon: Icons.location_off_outlined,
         emptyTitle: 'No forecast',
         builder: (data) => _Forecast(forecast: data!),
@@ -146,7 +242,10 @@ class _Forecast extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: 28),
       children: [
-        _LocationBar(location: forecast.location),
+        _LocationBar(
+          location: forecast.location,
+          fetchedAt: forecast.fetchedAt,
+        ),
         if (forecast.current case final current?) _Now(current: current),
 
         if (forecast.hourly.isNotEmpty) ...[
@@ -173,13 +272,27 @@ class _Forecast extends ConsumerWidget {
 }
 
 class _LocationBar extends ConsumerWidget {
-  const _LocationBar({required this.location});
+  const _LocationBar({required this.location, required this.fetchedAt});
 
   final WeatherLocation location;
+  final DateTime fetchedAt;
+
+  /// The time alone while it is today's; a forecast the tab has held since
+  /// yesterday (the auto-refresh failed, say) needs the date to be honest.
+  static String _stamp(DateTime at, {DateTime? now}) {
+    final today = now ?? DateTime.now();
+    final sameDay = at.year == today.year &&
+        at.month == today.month &&
+        at.day == today.day;
+    return DateFormat(sameDay ? 'h:mm a' : 'MMM d, h:mm a').format(at);
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    // A visit-triggered refresh is a refresh, so `AsyncView` shows the old
+    // forecast without a spinner; this line is the only sign it is happening.
+    final updating = ref.watch(weatherForecastProvider).isLoading;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 4, 0),
@@ -188,9 +301,20 @@ class _LocationBar extends ConsumerWidget {
           Icon(Icons.place_outlined, size: 16, color: scheme.mutedForeground),
           const SizedBox(width: 6),
           Expanded(
-            child: Text(
-              location.label,
-              style: TextStyle(fontSize: 13, color: scheme.mutedForeground),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  location.label,
+                  style:
+                      TextStyle(fontSize: 13, color: scheme.mutedForeground),
+                ),
+                Text(
+                  updating ? 'Updating2026' : 'Updated ${_stamp(fetchedAt)}',
+                  style:
+                      TextStyle(fontSize: 11, color: scheme.mutedForeground),
+                ),
+              ],
             ),
           ),
           IconButton(

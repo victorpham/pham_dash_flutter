@@ -45,9 +45,11 @@ dependencies:
   json_annotation: ^4.12.0
   intl: ^0.20.3
   cached_network_image: ^4.0.0
-  confetti: ^0.8.0
   markdown_widget: ^2.3.2+8
   image_picker: ^1.2.3
+  # Opens a home address in whatever map app the user prefers. Already resolved
+  # transitively through markdown_widget; naming it here only makes it direct.
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

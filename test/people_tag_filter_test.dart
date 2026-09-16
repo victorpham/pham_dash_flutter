@@ -29,8 +29,8 @@ Future<void> _pumpPeople(
   final container = ProviderContainer(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
-      allPeopleProvider.overrideWith((ref) => people),
-      personTagsProvider.overrideWith((ref) => tags),
+      allPeopleProvider.overrideWithBuild((ref, _) => people),
+      personTagsProvider.overrideWithBuild((ref, _) => tags),
     ],
   );
   addTearDown(container.dispose);
@@ -126,7 +126,7 @@ void main() {
     expect(find.text('Clear search and filters'), findsOneWidget);
   });
 
-  // The app bar reserves 104px without tags and 150px with them. If that ever
+  // The app bar reserves 48px without tags and 102px with them. If that ever
   // disagrees with what the bar actually builds, the result is a RenderFlex
   // overflow - yellow stripes in debug, a silent clip in release - so it is
   // asserted rather than left to be noticed.
@@ -154,11 +154,22 @@ void main() {
     await _pumpPeople(tester, tags: const []);
 
     expect(find.text('All'), findsNothing);
-    expect(find.text('Manage'), findsNothing);
-    // The two data-hygiene chips are untouched. Matched by their counted
-    // labels, since "No birthday" alone is also each undated person's subtitle.
+    expect(tester.takeException(), isNull);
+  });
+
+  // The hygiene filters live in a sheet now, so nothing on the screen itself
+  // carries their counted labels. Matched by those labels, since "No birthday"
+  // alone is also each undated person's subtitle.
+  testWidgets('the hygiene filters are reachable from the app bar',
+      (tester) async {
+    await _pumpPeople(tester);
+
+    expect(find.text('No birthday (3)'), findsNothing);
+
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.tune));
+    await tester.pumpAndSettle();
+
     expect(find.text('No birthday (3)'), findsOneWidget);
     expect(find.text('No photo (3)'), findsOneWidget);
-    expect(tester.takeException(), isNull);
   });
 }

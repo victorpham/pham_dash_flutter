@@ -107,12 +107,6 @@ class ApiDate {
   static DateTime startOfDay(DateTime date) =>
       DateTime(date.year, date.month, date.day);
 
-  /// The `yyyy-MM-dd` key the dismissed-lists store is keyed by.
-  static String dayKey(DateTime date) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${date.year.toString().padLeft(4, '0')}-${two(date.month)}-${two(date.day)}';
-  }
-
   /// True when the two values fall on the same local calendar day.
   static bool isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;

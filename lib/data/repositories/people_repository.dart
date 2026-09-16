@@ -40,30 +40,45 @@ class PeopleRepository {
     required String firstName,
     required String lastName,
     String? vietnameseName,
+    String? homeAddress,
     DateTime? birthDate,
   }) async =>
       decodeOrNull(
         await _api.post<dynamic>(
           '/people',
-          body: _personBody(firstName, lastName, vietnameseName, birthDate),
+          body: _personBody(
+            firstName: firstName,
+            lastName: lastName,
+            vietnameseName: vietnameseName,
+            homeAddress: homeAddress,
+            birthDate: birthDate,
+          ),
         ),
         Person.fromJson,
       );
 
-  /// Only `firstName`, `lastName`, `vietnameseName` and `birthDate` are
-  /// applied. `profilePictureUrl` is deliberately **not** updatable here - use
-  /// [uploadProfilePicture], which also deletes the previous file.
+  /// Only `firstName`, `lastName`, `vietnameseName`, `homeAddress` and
+  /// `birthDate` are applied. `profilePictureUrl` is deliberately **not**
+  /// updatable here - use [uploadProfilePicture], which also deletes the
+  /// previous file.
   Future<Person?> update(
     String id, {
     required String firstName,
     required String lastName,
     String? vietnameseName,
+    String? homeAddress,
     DateTime? birthDate,
   }) async =>
       decodeOrNull(
         await _api.put<dynamic>(
           '/people/$id',
-          body: _personBody(firstName, lastName, vietnameseName, birthDate),
+          body: _personBody(
+            firstName: firstName,
+            lastName: lastName,
+            vietnameseName: vietnameseName,
+            homeAddress: homeAddress,
+            birthDate: birthDate,
+          ),
         ),
         Person.fromJson,
       );
@@ -129,16 +144,28 @@ class PeopleRepository {
   Future<void> deletePicture(String personId, int pictureId) =>
       _api.delete('/people/$personId/pictures/$pictureId');
 
-  static Map<String, dynamic> _personBody(
-    String firstName,
-    String lastName,
+  /// Named rather than positional: with two adjacent optional `String?`s, a
+  /// transposed pair of arguments would compile and silently write the address
+  /// into the Vietnamese name.
+  ///
+  /// Omitting a key is how a field gets **cleared**. `PUT /api/people/{id}`
+  /// binds the entity, so a missing key deserializes to null server-side and
+  /// the repository copies that null over the stored value. Do not "fix" the
+  /// null-aware entries below into unconditional ones - that would send
+  /// `null` explicitly, which happens to work, but it would also start sending
+  /// every field on every write.
+  static Map<String, dynamic> _personBody({
+    required String firstName,
+    required String lastName,
     String? vietnameseName,
+    String? homeAddress,
     DateTime? birthDate,
-  ) =>
+  }) =>
       {
         'firstName': firstName,
         'lastName': lastName,
         'vietnameseName': ?vietnameseName,
+        'homeAddress': ?homeAddress,
         if (birthDate != null)
           'birthDate':
               '${birthDate.year.toString().padLeft(4, '0')}-'

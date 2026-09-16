@@ -9,7 +9,6 @@ import '../features/login/login_screen.dart';
 import '../features/people/people_screen.dart';
 import '../features/people/person_detail_screen.dart';
 import '../features/todo/todo_list_detail_screen.dart';
-import '../features/todo/todo_screen.dart';
 
 /// Where to send the user once they finish signing in.
 ///
@@ -107,14 +106,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           name: personPageName,
           child: PersonDetailScreen(
             personId: state.pathParameters['id']!,
-          ),
-        ),
-      ),
-      GoRoute(
-        path: '/todo',
-        builder: (context, state) => TodoScreen(
-          openListId: int.tryParse(
-            state.uri.queryParameters['openListId'] ?? '',
           ),
         ),
       ),

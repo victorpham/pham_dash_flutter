@@ -58,9 +58,12 @@ abstract class TodoLabel with _$TodoLabel {
 
 /// The calendar event a list is linked to.
 ///
-/// Only populated by `GET /api/todo/lists/all-scheduled`; it is null everywhere
-/// else, which is what distinguishes an event-linked list from a time-scheduled
-/// one.
+/// Only ever populated by `GET /api/todo/lists/all-scheduled`, which **this
+/// client no longer calls** — the Lists tab is the full list browser now, not
+/// the scheduled feed. So this is null on every payload the app currently
+/// reads. Kept because it is still on the wire and the web dashboard still
+/// relies on it; anything reading it here needs the server to start sending it
+/// on `GET /todo/lists` first.
 @freezed
 abstract class LinkedEvent with _$LinkedEvent {
   const factory LinkedEvent({

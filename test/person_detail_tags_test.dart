@@ -39,9 +39,9 @@ Future<void> _pumpDetail(WidgetTester tester, Person person) async {
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
-        allPeopleProvider.overrideWith((ref) => [person]),
-        personTagsProvider.overrideWith(
-          (ref) => const [_pickleball, _coworkers],
+        allPeopleProvider.overrideWithBuild((ref, _) => [person]),
+        personTagsProvider.overrideWithBuild(
+          (ref, _) => const [_pickleball, _coworkers],
         ),
         personProvider.overrideWith((ref, id) => person),
         personRelationshipsProvider.overrideWith(

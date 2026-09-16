@@ -6,11 +6,12 @@ import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
+import '../../core/ui/color_picker_sheet.dart';
 import '../../core/ui/person_picker.dart';
 import '../../data/models/todo_models.dart';
 import '../people/people_providers.dart';
 import 'todo_labels_sheet.dart';
-import 'todo_screen.dart';
+import 'todo_providers.dart';
 
 final todoListDetailProvider =
     FutureProvider.autoDispose.family<TodoList?, int>(
@@ -208,6 +209,28 @@ class TodoListDetailScreen extends ConsumerWidget {
                       selected: (option.value ?? '') == (current ?? ''),
                       onTap: () => Navigator.of(context).pop(option),
                     ),
+                  // Anything outside the eight presets. Shows the current
+                  // colour when it is already a custom one, so reopening the
+                  // sheet does not look like it forgot.
+                  _ColorSwatch(
+                    option: (
+                      name: 'Custom',
+                      value: kListColors.any((o) => o.value == current)
+                          ? null
+                          : current,
+                    ),
+                    icon: Icons.colorize_outlined,
+                    selected: current != null &&
+                        !kListColors.any((o) => o.value == current),
+                    onTap: () async {
+                      final picked =
+                          await showColorPicker(context, initial: current);
+                      if (picked != null && context.mounted) {
+                        Navigator.of(context)
+                            .pop((name: 'Custom', value: picked));
+                      }
+                    },
+                  ),
                 ],
               ),
             ],
@@ -374,7 +397,13 @@ class _Attributes extends ConsumerWidget {
               ),
               child: Text(
                 label.name,
-                style: const TextStyle(fontSize: 11.5),
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: onColor(
+                    parseHexColor(label.color) ??
+                        scheme.surfaceContainerHighest,
+                  ),
+                ),
               ),
             ),
         ],
@@ -688,11 +717,16 @@ class _ColorSwatch extends StatelessWidget {
     required this.option,
     required this.selected,
     required this.onTap,
+    this.icon,
   });
 
   final ({String name, String? value}) option;
   final bool selected;
   final VoidCallback onTap;
+
+  /// Shown when the swatch has no colour of its own to show. Defaults to the
+  /// "no colour" glyph, which is what the None swatch wants.
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -718,11 +752,15 @@ class _ColorSwatch extends StatelessWidget {
             ),
             child: color == null
                 ? Icon(
-                    Icons.format_color_reset_outlined,
+                    icon ?? Icons.format_color_reset_outlined,
                     size: 18,
                     color: scheme.onSurfaceVariant,
                   )
-                : null,
+                : icon == null
+                    ? null
+                    // A custom swatch showing its colour still needs the glyph,
+                    // or it is indistinguishable from a preset.
+                    : Icon(icon, size: 18, color: onColor(color)),
           ),
         ),
         const SizedBox(height: 4),

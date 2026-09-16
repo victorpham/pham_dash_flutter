@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:markdown_widget/markdown_widget.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/router.dart';
 import '../../core/api/api_exception.dart';
@@ -18,6 +20,7 @@ import 'people_providers.dart';
 import 'person_edit_sheet.dart';
 import 'person_picture_gallery.dart';
 import 'person_tags_sheet.dart';
+import 'home_address.dart';
 import 'relationship_groups.dart';
 
 /// A note younger than this is badged "New", as on the web timeline.
@@ -128,97 +131,110 @@ class _Header extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final birthDate = person.birthDate;
     final age = person.age;
+    final address = person.homeAddress?.trim();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Tapping the avatar opens the gallery. The picture is the obvious
-          // thing to reach for when you want to change the picture, and it
-          // saves a trip through the edit sheet to get there.
-          Semantics(
-            button: true,
-            label: 'Pictures of ${person.fullName}',
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: () => showPersonPictureGallery(context, person: person),
-              child: Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  PersonAvatar(
-                    storedPath: person.profilePictureUrl,
-                    initials: person.initials,
-                    size: 72,
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: scheme.primary,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: scheme.surface, width: 2),
-                    ),
-                    child: Icon(
-                      Icons.photo_library_outlined,
-                      size: 12,
-                      color: scheme.onPrimary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  person.fullName,
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                if (person.vietnameseName case final vietnamese?
-                    when vietnamese.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    vietnamese,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: scheme.mutedForeground,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 8),
-                Row(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+            // Tapping the avatar opens the gallery. The picture is the obvious
+            // thing to reach for when you want to change the picture, and it
+            // saves a trip through the edit sheet to get there.
+            Semantics(
+              button: true,
+              label: 'Pictures of ${person.fullName}',
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () => showPersonPictureGallery(context, person: person),
+                child: Stack(
+                  alignment: Alignment.bottomRight,
                   children: [
-                    Icon(
-                      Icons.cake_outlined,
-                      size: 15,
-                      color: scheme.mutedForeground,
+                    PersonAvatar(
+                      storedPath: person.profilePictureUrl,
+                      initials: person.initials,
+                      size: 72,
                     ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        birthDate == null
-                            ? 'No birth date'
-                            : [
-                                DateFormat('MMMM d, y').format(birthDate),
-                                if (age != null) '$age years old',
-                              ].join(' · '),
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: scheme.mutedForeground,
-                        ),
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: scheme.primary,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: scheme.surface, width: 2),
+                      ),
+                      child: Icon(
+                        Icons.photo_library_outlined,
+                        size: 12,
+                        color: scheme.onPrimary,
                       ),
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    person.fullName,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  if (person.vietnameseName case final vietnamese?
+                      when vietnamese.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      vietnamese,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: scheme.mutedForeground,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.cake_outlined,
+                        size: 15,
+                        color: scheme.mutedForeground,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          birthDate == null
+                              ? 'No birth date'
+                              : [
+                                  DateFormat('MMMM d, y').format(birthDate),
+                                  if (age != null) '$age years old',
+                                ].join(' · '),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: scheme.mutedForeground,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            ],
           ),
+          // Full width under the avatar rather than beside it: the column next
+          // to a 72px avatar is too narrow for an address plus two affordances,
+          // and a wrapped three-line address there reads badly.
+          if (address != null && address.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _HomeAddressRow(address: address),
+          ],
         ],
       ),
     );
@@ -934,6 +950,111 @@ class _TagsRow extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+/// The home address: tap it to copy, or use the button to open it in a map app.
+///
+/// Rendered only when there is an address — no label, no "No address"
+/// placeholder, unlike the birth-date line above it. A birthday is something
+/// every person has and the directory actively nags for; an address is not.
+///
+/// Two targets rather than one overloaded gesture: a single tap that sometimes
+/// copies and sometimes navigates is the kind of thing nobody trusts twice.
+/// Long-press was avoided as the second action — it is undiscoverable, and
+/// Android already owns it for text selection.
+class _HomeAddressRow extends StatelessWidget {
+  const _HomeAddressRow({required this.address});
+
+  final String address;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final muted = TextStyle(fontSize: 13, color: scheme.mutedForeground);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Tooltip(
+            message: 'Tap to copy',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => _copy(context),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      // The same icon an event's location carries, so the two
+                      // read as the same kind of thing.
+                      Icons.place_outlined,
+                      size: 15,
+                      color: scheme.mutedForeground,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(address, style: muted)),
+                    const SizedBox(width: 6),
+                    // Carries the whole discoverability story for the copy: a
+                    // bare tappable paragraph hints at nothing.
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1),
+                      child: Icon(
+                        Icons.copy_rounded,
+                        size: 14,
+                        color: scheme.mutedForeground,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Open in maps',
+          visualDensity: VisualDensity.compact,
+          iconSize: 20,
+          icon: const Icon(Icons.map_outlined),
+          onPressed: () => _openInMaps(context),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _copy(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: address));
+    await HapticFeedback.selectionClick();
+    // Android 13+ shows its own "Copied" chip, so a modern phone confirms
+    // twice. Kept anyway: it is the only feedback below API 33, and it matches
+    // every other confirmation in this app.
+    if (context.mounted) _toast(context, 'Address copied');
+  }
+
+  Future<void> _openInMaps(BuildContext context) async {
+    var launched = false;
+    try {
+      // No canLaunchUrl first: that is a second IPC whose answer depends on the
+      // <queries> entry in the manifest being right, while launchUrl reports
+      // the truth either way — it returns false rather than throwing when
+      // nothing can handle the intent.
+      launched = await launchUrl(
+        mapSearchUri(address),
+        // Never platformDefault: on iOS that sends an https URL to an in-app
+        // Safari view, which would show the Maps web page instead of opening
+        // the app.
+        mode: LaunchMode.externalApplication,
+      );
+    } on PlatformException {
+      // No activity attached — rare, and indistinguishable from "couldn't".
+      launched = false;
+    }
+
+    if (!launched && context.mounted) {
+      _toast(context, 'No app on this phone can open a map.');
+    }
   }
 }
 

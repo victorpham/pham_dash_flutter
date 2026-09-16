@@ -22,10 +22,10 @@ Future<ProviderContainer> _pumpPeople(WidgetTester tester) async {
   final container = ProviderContainer(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
-      allPeopleProvider.overrideWith((ref) => _people),
+      allPeopleProvider.overrideWithBuild((ref, _) => _people),
       // PeopleScreen sizes its app bar on the tag vocabulary, so it has to be
       // stubbed or the screen reaches for the network.
-      personTagsProvider.overrideWith((ref) => const <PersonTag>[]),
+      personTagsProvider.overrideWithBuild((ref, _) => const <PersonTag>[]),
     ],
   );
   addTearDown(container.dispose);
@@ -135,14 +135,19 @@ void main() {
     expect(find.text('Ha Pham'), findsOneWidget);
   });
 
-  testWidgets('a filter chip alone offers the clear, with no search typed',
+  testWidgets('a hygiene filter alone offers the clear, with no search typed',
       (tester) async {
     await _pumpPeople(tester);
 
     // Everyone in the fixture is missing a birth date, so the filter keeps all
     // three — what matters is that the escape hatch appears. The count in the
-    // label is what distinguishes the chip from the rows' own "No birthday".
+    // label is what distinguishes the switch from the rows' own "No birthday".
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.tune));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('No birthday (3)'));
+    await tester.pumpAndSettle();
+    // Back to the screen, so the app bar action is unambiguous again.
+    Navigator.of(tester.element(find.byType(PeopleScreen))).pop();
     await tester.pumpAndSettle();
 
     expect(_clearAllButton(), findsOneWidget);

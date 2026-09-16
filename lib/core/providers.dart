@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/experimental/persist.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -6,7 +7,9 @@ import '../data/repositories/people_repository.dart';
 import '../data/repositories/todo_repository.dart';
 import '../data/repositories/weather_repository.dart';
 import 'api/api_client.dart';
+import 'api/server_warmup.dart';
 import 'auth/auth_service.dart';
+import 'cache/preferences_storage.dart';
 
 /// Overridden in `main()` once `SharedPreferences` has loaded, so the rest of
 /// the app can read it synchronously.
@@ -58,6 +61,16 @@ final userPreferenceRepositoryProvider = Provider(
   (ref) => UserPreferenceRepository(ref.watch(apiClientProvider)),
 );
 
+final serverWarmupProvider = Provider(
+  (ref) => ServerWarmup(ref.watch(userPreferenceRepositoryProvider)),
+);
+
+/// Where `CachedList` notifiers keep their last result. Typed as the abstract
+/// [Storage] so tests override it with `Storage.inMemory()`.
+final cacheStorageProvider = Provider<Storage<String, String>>(
+  (ref) => PreferencesStorage(ref.watch(sharedPreferencesProvider)),
+);
+
 /// Weather is not a PhamDash feature: this one talks to weather.gov and
 /// Nominatim, so it takes no [ApiClient] and carries no bearer token.
 final weatherRepositoryProvider = Provider((ref) => WeatherRepository());
@@ -74,6 +87,7 @@ class AuthController extends AsyncNotifier<AuthUser?> {
     final subscription =
         ref.watch(apiClientProvider).sessionExpired.listen((_) {
       state = const AsyncData(null);
+      _clearCache();
     });
     ref.onDispose(subscription.cancel);
 
@@ -90,7 +104,13 @@ class AuthController extends AsyncNotifier<AuthUser?> {
   Future<void> signOut() async {
     await ref.read(authServiceProvider).signOut();
     state = const AsyncData(null);
+    await _clearCache();
   }
+
+  /// Cached lists belong to the session that fetched them: todo lists are
+  /// per-user, and the next person to sign in here must not open to them.
+  Future<void> _clearCache() =>
+      PreferencesStorage.clearAll(ref.read(sharedPreferencesProvider));
 }
 
 final authControllerProvider =

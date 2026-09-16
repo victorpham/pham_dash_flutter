@@ -31,10 +31,10 @@ Future<void> _pumpPeople(WidgetTester tester, List<Person> people) async {
   final container = ProviderContainer(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
-      allPeopleProvider.overrideWith((ref) => people),
+      allPeopleProvider.overrideWithBuild((ref, _) => people),
       // PeopleScreen sizes its app bar on the tag vocabulary, so it has to be
       // stubbed or the screen reaches for the network.
-      personTagsProvider.overrideWith((ref) => const <PersonTag>[]),
+      personTagsProvider.overrideWithBuild((ref, _) => const <PersonTag>[]),
     ],
   );
   addTearDown(container.dispose);

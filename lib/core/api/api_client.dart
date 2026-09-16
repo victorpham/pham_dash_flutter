@@ -119,8 +119,8 @@ class ApiClient {
       case DioExceptionType.receiveTimeout:
       case DioExceptionType.transformTimeout:
         return const NetworkException(
-          'The server took too long to respond. If this was the first calendar '
-          'load in a while it may still be syncing - try again.',
+          'The server took too long to respond. It may still be waking up, or '
+          'syncing the calendar for the first time in a while - try again.',
         );
       case DioExceptionType.cancel:
         return const NetworkException('Request cancelled.');

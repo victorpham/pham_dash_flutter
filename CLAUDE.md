@@ -97,6 +97,20 @@ touch Dio, and repositories never touch Riverpod.
 - **Weather is off-API.** `WeatherRepository` talks to weather.gov and Nominatim
   directly, takes no `ApiClient`, and must not carry the bearer token; it needs its
   own `User-Agent`. It is the one tab that works while the API is down.
+- **The production database naps.** Azure SQL serverless auto-pauses after an
+  hour idle and takes tens of seconds to resume; the API holds the request open
+  meanwhile. `ServerWarmup` pings on app resume and `PatientLoading` explains
+  the wait after 5 s. `GET /health` is deliberately dependency-free and wakes
+  nothing - the ping is `GET /api/user-preferences`.
+- **The six list providers behind a first screen are cached.** `CachedList`
+  (`lib/core/cache/`) uses Riverpod 3's *experimental* `persist` over a
+  `SharedPreferences` `Storage`; a cold launch renders the last result under a
+  thin bar while the fetch runs. `PreferencesStorage.delete` deliberately keeps
+  unexpired entries, because Riverpod deletes on provider error and a failed
+  wake is exactly when the saved copy matters. `AsyncView` keeps data on error
+  (banner + Retry) rather than swapping to the error view; sign-out clears the
+  cache. Tests override `cacheStorageProvider` with `Storage.inMemory()`, and
+  the cached providers are notifiers, so fake them with `overrideWithBuild`.
 - **Preferences are read-only in this client.** `PUT /api/user-preferences` is a
   full replace that nulls omitted fields, so writing from here would wipe the web
   app's theme. Dark mode is stored device-locally in `SharedPreferences`.
@@ -123,4 +137,4 @@ Plain `flutter_test`; no mocking package. Widget tests override providers in a
 `ProviderScope` and fake repositories by **subclassing** them (a repository holds a
 private `ApiClient`, so `implements` won't compile) and overriding only the methods
 under test. Pure logic — birthday sorting, event layout, weather parsing, date
-handling, scheduled-list rules — is tested directly against the exported function.
+handling — is tested directly against the exported function.

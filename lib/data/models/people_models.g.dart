@@ -11,6 +11,7 @@ _Person _$PersonFromJson(Map<String, dynamic> json) => _Person(
   firstName: json['firstName'] as String,
   lastName: json['lastName'] as String,
   vietnameseName: json['vietnameseName'] as String?,
+  homeAddress: json['homeAddress'] as String?,
   birthDate: const WallClock().fromJson(json['birthDate'] as String?),
   profilePictureUrl: json['profilePictureUrl'] as String?,
   tags:
@@ -25,6 +26,7 @@ Map<String, dynamic> _$PersonToJson(_Person instance) => <String, dynamic>{
   'firstName': instance.firstName,
   'lastName': instance.lastName,
   'vietnameseName': instance.vietnameseName,
+  'homeAddress': instance.homeAddress,
   'birthDate': const WallClock().toJson(instance.birthDate),
   'profilePictureUrl': instance.profilePictureUrl,
   'tags': instance.tags,

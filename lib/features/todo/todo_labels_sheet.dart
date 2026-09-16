@@ -5,7 +5,7 @@ import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/todo_models.dart';
-import 'todo_screen.dart';
+import 'todo_providers.dart';
 
 /// Labels on one list, and the label vocabulary behind them.
 ///

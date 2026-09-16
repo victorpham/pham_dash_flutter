@@ -9,6 +9,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
 import '../../core/ui/person_avatar.dart';
 import '../../data/models/people_models.dart';
+import 'people_filters_sheet.dart';
 import 'people_providers.dart';
 import 'person_edit_sheet.dart';
 import 'person_tag_counts.dart';
@@ -57,6 +58,14 @@ final missingBirthdateFilterProvider =
 
 final missingPictureFilterProvider =
     NotifierProvider<_StoredFlag, bool>(() => _StoredFlag(_missingPictureKey));
+
+/// Whether either data-hygiene filter is on — the app bar action tints on it,
+/// since its own chips no longer sit on the screen to say so.
+final _hasHygieneFilterProvider = Provider.autoDispose<bool>(
+  (ref) =>
+      ref.watch(missingBirthdateFilterProvider) ||
+      ref.watch(missingPictureFilterProvider),
+);
 
 /// Whether anything is narrowing the directory right now.
 final _isFilteredProvider = Provider.autoDispose<bool>(
@@ -131,13 +140,14 @@ final filteredPeopleProvider = Provider.autoDispose<List<Person>>((ref) {
     ..sort(comparePeopleByUpcomingBirthday);
 });
 
-/// The search box plus the two data-hygiene chips.
-const double _filtersHeight = 104;
+/// The search box alone. The data-hygiene filters moved into a sheet behind an
+/// app bar action; see `people_filters_sheet.dart`.
+const double _filtersHeight = 48;
 
 /// ...plus the tag filter bar, which is only built when tags exist — reserving
-/// the row unconditionally would leave 46px of dead space under the search box
+/// the row unconditionally would leave 54px of dead space under the search box
 /// for anyone who has not made a tag yet.
-const double _filtersHeightWithTags = 150;
+const double _filtersHeightWithTags = 102;
 
 class PeopleScreen extends ConsumerWidget {
   const PeopleScreen({super.key});
@@ -166,6 +176,16 @@ class PeopleScreen extends ConsumerWidget {
             tooltip: 'Manage tags',
             icon: const Icon(Icons.sell_outlined),
             onPressed: () => showPersonTagsSheet(context),
+          ),
+          // Tinted while one of them is on, because the chips that used to show
+          // their state are now behind the sheet.
+          IconButton(
+            tooltip: 'Filter by missing information',
+            icon: const Icon(Icons.tune),
+            color: ref.watch(_hasHygieneFilterProvider)
+                ? Theme.of(context).colorScheme.primary
+                : null,
+            onPressed: () => showPeopleFiltersSheet(context),
           ),
         ],
         bottom: PreferredSize(
@@ -265,14 +285,6 @@ class _SearchAndFiltersState extends ConsumerState<_SearchAndFilters> {
       if (_controller.text != next) _controller.text = next;
     });
 
-    // Counts are over the whole directory, not the filtered view — they say how
-    // much data is missing, so filtering them would make them meaningless.
-    final people = ref.watch(allPeopleProvider).value ?? const <Person>[];
-    final missingBirthdate =
-        people.where((p) => p.birthDate == null).length;
-    final missingPicture =
-        people.where((p) => p.profilePictureUrl == null).length;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: Column(
@@ -300,29 +312,6 @@ class _SearchAndFiltersState extends ConsumerState<_SearchAndFilters> {
             onChanged: (value) =>
                 ref.read(_searchProvider.notifier).value = value,
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: FilterChip(
-                  label: Text('No birthday ($missingBirthdate)'),
-                  selected: ref.watch(missingBirthdateFilterProvider),
-                  onSelected: (_) => ref
-                      .read(missingBirthdateFilterProvider.notifier)
-                      .toggle(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: FilterChip(
-                  label: Text('No photo ($missingPicture)'),
-                  selected: ref.watch(missingPictureFilterProvider),
-                  onSelected: (_) =>
-                      ref.read(missingPictureFilterProvider.notifier).toggle(),
-                ),
-              ),
-            ],
-          ),
           const _TagFilterBar(),
         ],
       ),
@@ -341,7 +330,7 @@ class _TagFilterBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tags = ref.watch(personTagsProvider).value ?? const <PersonTag>[];
-    // Nothing at all rather than an empty 46px strip — PeopleScreen sizes the
+    // Nothing at all rather than an empty 54px strip — PeopleScreen sizes the
     // app bar on the same condition.
     if (tags.isEmpty) return const SizedBox.shrink();
 
@@ -350,43 +339,48 @@ class _TagFilterBar extends ConsumerWidget {
       ref.watch(allPeopleProvider).value ?? const <Person>[],
     );
 
-    return SizedBox(
-      height: 46,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: FilterChip(
-              label: const Text('All'),
-              selected: selected == null,
-              onSelected: (_) =>
-                  ref.read(tagFilterProvider.notifier).value = null,
-            ),
-          ),
-          for (final tag in tags)
+    return Padding(
+      // The gap under the search box, owned here rather than by the column above
+      // so an empty vocabulary leaves no dead space at all.
+      padding: const EdgeInsets.only(top: 8),
+      child: SizedBox(
+        height: 46,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          children: [
             Padding(
               padding: const EdgeInsets.only(right: 6),
               child: FilterChip(
-                label: Text('${tag.name} (${counts.of(tag.id)})'),
-                // Compares against the loaded vocabulary, so a filter left
-                // pointing at a tag deleted elsewhere simply shows nothing
-                // selected. Checked passively — never write to a provider from
-                // a build method.
-                selected: selected == tag.id,
-                backgroundColor: parseHexColor(tag.color),
-                onSelected: (isSelected) => ref
-                    .read(tagFilterProvider.notifier)
-                    .value = isSelected ? tag.id : null,
+                label: const Text('All'),
+                selected: selected == null,
+                onSelected: (_) =>
+                    ref.read(tagFilterProvider.notifier).value = null,
               ),
             ),
-          ActionChip(
-            avatar: const Icon(Icons.tune, size: 16),
-            label: const Text('Manage'),
-            onPressed: () => showPersonTagsSheet(context),
-          ),
-        ],
+            for (final tag in tags)
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilterChip(
+                  label: Text('${tag.name} (${counts.of(tag.id)})'),
+                  // Compares against the loaded vocabulary, so a filter left
+                  // pointing at a tag deleted elsewhere simply shows nothing
+                  // selected. Checked passively — never write to a provider from
+                  // a build method.
+                  selected: selected == tag.id,
+                  backgroundColor: parseHexColor(tag.color),
+                  labelStyle: chipLabelStyleOn(
+                    parseHexColor(tag.color),
+                    selected: selected == tag.id,
+                  ),
+                  onSelected: (isSelected) =>
+                      ref.read(tagFilterProvider.notifier).value = isSelected
+                      ? tag.id
+                      : null,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

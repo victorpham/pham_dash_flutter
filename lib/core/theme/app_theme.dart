@@ -9,22 +9,59 @@ const Color kDefaultPrimary = Color(0xFF10B981);
 /// Category colours, list colours and `primaryColor` all arrive this way. The
 /// API validates category colours against `^#[0-9A-Fa-f]{6}$` but list colours
 /// are unvalidated, so this has to tolerate junk.
-/// The eight swatches the web editor offers, in its order. Pastels, because a
-/// list's colour is a background wash on the web card rather than an accent.
+/// The eight swatches offered for list colours, people tags and todo labels.
+///
+/// The CSS named colours, so "Red" is the red anyone means by red. This
+/// **diverges from the web editor**, which offers the Tailwind 100-level
+/// pastels these used to mirror (`#fee2e2` and friends). Those read as washed
+/// out here: the web paints a whole card background with them, while this
+/// client uses the colour as a 4px stripe, a 35%-alpha app bar tint and small
+/// chips, all of which need the saturation to register at all. Colours already
+/// stored by the web keep working — nothing migrates, and `parseHexColor`
+/// takes any hex.
+///
+/// Saturated backgrounds do mean text drawn on one needs a deliberate
+/// foreground; see [onColor].
 ///
 /// Lives here rather than in the todo feature that first needed it, because
 /// people tags pick from the same palette and reaching across features for a
 /// constant — worse, into a *screen* — is not worth saving a file.
 const List<({String name, String? value})> kListColors = [
   (name: 'None', value: null),
-  (name: 'Red', value: '#fee2e2'),
-  (name: 'Orange', value: '#ffedd5'),
-  (name: 'Yellow', value: '#fef9c3'),
-  (name: 'Green', value: '#dcfce7'),
-  (name: 'Blue', value: '#dbeafe'),
-  (name: 'Purple', value: '#e9d5ff'),
-  (name: 'Pink', value: '#fce7f3'),
+  (name: 'Red', value: '#ff0000'),
+  (name: 'Orange', value: '#ff8c00'),
+  (name: 'Yellow', value: '#ffd700'),
+  (name: 'Green', value: '#008000'),
+  (name: 'Blue', value: '#0000ff'),
+  (name: 'Purple', value: '#800080'),
+  (name: 'Pink', value: '#ff1493'),
 ];
+
+/// Black or white, whichever is legible on [background].
+///
+/// Needed because a label's colour is picked by the user and drawn *behind
+/// text*: the theme's own `onSurface` is right for one end of the palette and
+/// invisible at the other — white on gold, black on navy. Defers to
+/// [ThemeData.estimateBrightnessForColor] rather than hand-rolling the
+/// luminance threshold, so it stays consistent with how Material picks
+/// foregrounds everywhere else.
+///
+/// `black87` rather than pure black, matching Material's own on-light colour.
+Color onColor(Color background) =>
+    ThemeData.estimateBrightnessForColor(background) == Brightness.dark
+        ? Colors.white
+        : Colors.black87;
+
+/// The label style for a chip tinted with a user-picked [background].
+///
+/// Null — meaning "leave it to the theme" — when there is no custom colour, and
+/// also while [selected]: a selected chip is painted with `selectedColor`
+/// rather than `backgroundColor`, so forcing a foreground for a background
+/// Material is not using would be the one case that reads wrong.
+TextStyle? chipLabelStyleOn(Color? background, {required bool selected}) =>
+    background == null || selected
+        ? null
+        : TextStyle(color: onColor(background));
 
 Color? parseHexColor(String? hex) {
   if (hex == null) return null;

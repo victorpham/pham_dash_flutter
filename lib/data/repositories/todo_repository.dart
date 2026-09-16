@@ -38,36 +38,6 @@ class TodoRepository {
         TodoList.fromJson,
       );
 
-  /// Lists scheduled within [windowMinutes] of now.
-  ///
-  /// Unlike [allScheduled], this endpoint **does** apply the day-of-week
-  /// filter server-side.
-  Future<List<TodoList>> scheduled({int windowMinutes = 60}) async =>
-      decodeList(
-        await _api.get<dynamic>(
-          '/todo/lists/scheduled',
-          query: {'windowMinutes': windowMinutes},
-        ),
-        TodoList.fromJson,
-      );
-
-  /// The scheduled-lists feed: every non-archived list with a `scheduledTime`,
-  /// unioned with lists linked to an upcoming event.
-  ///
-  /// The time-scheduled half comes back **unfiltered** - no day-of-week check,
-  /// no time-of-day check. Only the event-linked half is windowed server-side
-  /// (visible `hoursBeforeEvent` before a timed event, or from 6 PM the day
-  /// before an all-day one). Everything else is the client's job; see
-  /// `ScheduledListsController`.
-  Future<List<TodoList>> allScheduled({int hoursBeforeEvent = 18}) async =>
-      decodeList(
-        await _api.get<dynamic>(
-          '/todo/lists/all-scheduled',
-          query: {'hoursBeforeEvent': hoursBeforeEvent},
-        ),
-        TodoList.fromJson,
-      );
-
   Future<TodoList?> createList(CreateTodoList body) async => decodeOrNull(
         await _api.post<dynamic>('/todo/lists', body: body.toJson()),
         TodoList.fromJson,

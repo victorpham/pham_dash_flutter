@@ -26,6 +26,7 @@ class _RecordingPeople extends PeopleRepository {
     required String firstName,
     required String lastName,
     String? vietnameseName,
+    String? homeAddress,
     DateTime? birthDate,
   }) async {
     created = true;
@@ -46,6 +47,7 @@ class _RecordingPeople extends PeopleRepository {
     required String firstName,
     required String lastName,
     String? vietnameseName,
+    String? homeAddress,
     DateTime? birthDate,
   }) async =>
       Person(id: id, firstName: firstName, lastName: lastName);
@@ -76,9 +78,9 @@ Future<({_RecordingPeople people, _RecordingTags tags})> _pumpSheet(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        allPeopleProvider.overrideWith((ref) => const <Person>[]),
-        personTagsProvider.overrideWith(
-          (ref) => const [_pickleball, _coworkers],
+        allPeopleProvider.overrideWithBuild((ref, _) => const <Person>[]),
+        personTagsProvider.overrideWithBuild(
+          (ref, _) => const [_pickleball, _coworkers],
         ),
         peopleRepositoryProvider.overrideWithValue(people),
         personTagsRepositoryProvider.overrideWithValue(tags),
@@ -95,6 +97,10 @@ Future<({_RecordingPeople people, _RecordingTags tags})> _pumpSheet(
 Future<void> _fillNameAndSave(WidgetTester tester) async {
   await tester.enterText(find.widgetWithText(TextFormField, 'First name'), 'Ha');
   await tester.enterText(find.widgetWithText(TextFormField, 'Last name'), 'Pham');
+  // The form is taller than the 800x600 test surface, so the button has to be
+  // scrolled to before it can be hit. The real sheet is full height and
+  // scrollable, so this is a harness artifact rather than a layout problem.
+  await tester.ensureVisible(find.widgetWithText(FilledButton, 'Add person'));
   await tester.tap(find.widgetWithText(FilledButton, 'Add person'));
   await tester.pumpAndSettle();
 }
@@ -149,6 +155,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilterChip, 'Coworkers'));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
 
@@ -172,6 +179,7 @@ void main() {
       ),
     );
 
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
 

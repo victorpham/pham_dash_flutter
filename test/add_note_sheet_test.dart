@@ -44,7 +44,7 @@ Future<_RecordingNotes> _pumpSheet(WidgetTester tester, {Person? person}) async 
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        allPeopleProvider.overrideWith((ref) => _people),
+        allPeopleProvider.overrideWithBuild((ref, _) => _people),
         notesRepositoryProvider.overrideWithValue(notes),
       ],
       child: MaterialApp(home: Scaffold(body: AddNoteSheet(person: person))),

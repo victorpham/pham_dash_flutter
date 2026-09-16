@@ -57,6 +57,7 @@ class WeatherRepository {
       daily: parseDaily(dailyPeriods, hourlyPeriods),
       hourly: parseHourly(hourlyPeriods, 24),
       extendedHourly: parseHourly(hourlyPeriods, 48),
+      fetchedAt: DateTime.now(),
     );
   }
 

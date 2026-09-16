@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -33,11 +34,22 @@ Future<Person?> showPersonEditSheet(
     isScrollControlled: true,
     showDragHandle: true,
     useSafeArea: true,
-    builder: (_) => Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
+    // Anchored to the top rather than sized to its content. Creating autofocuses
+    // the first name field, so the keyboard is already rising as the sheet
+    // arrives — a content-sized sheet ends up behind it with the save button out
+    // of reach. Full height instead, and the form scrolls in whatever the
+    // keyboard leaves.
+    builder: (context) => SizedBox(
+      height: double.infinity,
+      child: Padding(
+        // Read off the sheet's own context. Taken from the caller's, as this
+        // was, the inset stays at zero forever: that element does not rebuild
+        // when the keyboard opens, so the padding never appears.
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: PersonEditSheet(person: person),
       ),
-      child: PersonEditSheet(person: person),
     ),
   );
 }
@@ -57,6 +69,8 @@ class _PersonEditSheetState extends ConsumerState<PersonEditSheet> {
   late final _lastName = TextEditingController(text: widget.person?.lastName);
   late final _vietnameseName =
       TextEditingController(text: widget.person?.vietnameseName);
+  late final _homeAddress =
+      TextEditingController(text: widget.person?.homeAddress);
 
   late DateTime? _birthDate = widget.person?.birthDate;
 
@@ -77,6 +91,7 @@ class _PersonEditSheetState extends ConsumerState<PersonEditSheet> {
     _firstName.dispose();
     _lastName.dispose();
     _vietnameseName.dispose();
+    _homeAddress.dispose();
     super.dispose();
   }
 
@@ -173,6 +188,25 @@ class _PersonEditSheetState extends ConsumerState<PersonEditSheet> {
               controller: _vietnameseName,
               decoration: const InputDecoration(
                 labelText: 'Vietnamese name (optional)',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _homeAddress,
+              textCapitalization: TextCapitalization.words,
+              keyboardType: TextInputType.streetAddress,
+              autofillHints: const [AutofillHints.fullStreetAddress],
+              // One line on purpose: the field is a single string, and newlines
+              // would end up in both the clipboard and the map query.
+              //
+              // Capped rather than counted — `maxLength` would hang a 0/300
+              // counter under an optional field nobody will get near the limit
+              // of. The 300 matches the column; overflowing it is a
+              // SqlException, which the API turns into a 500 rather than
+              // anything the user could act on.
+              inputFormatters: [LengthLimitingTextInputFormatter(300)],
+              decoration: const InputDecoration(
+                labelText: 'Home address (optional)',
               ),
             ),
             const SizedBox(height: 16),
@@ -281,6 +315,7 @@ class _PersonEditSheetState extends ConsumerState<PersonEditSheet> {
 
     final repository = ref.read(peopleRepositoryProvider);
     final vietnameseName = _vietnameseName.text.trim();
+    final homeAddress = _homeAddress.text.trim();
 
     try {
       var saved = _isEdit
@@ -289,12 +324,14 @@ class _PersonEditSheetState extends ConsumerState<PersonEditSheet> {
               firstName: _firstName.text.trim(),
               lastName: _lastName.text.trim(),
               vietnameseName: vietnameseName.isEmpty ? null : vietnameseName,
+              homeAddress: homeAddress.isEmpty ? null : homeAddress,
               birthDate: _birthDate,
             )
           : await repository.create(
               firstName: _firstName.text.trim(),
               lastName: _lastName.text.trim(),
               vietnameseName: vietnameseName.isEmpty ? null : vietnameseName,
+              homeAddress: homeAddress.isEmpty ? null : homeAddress,
               birthDate: _birthDate,
             );
 
@@ -391,6 +428,10 @@ class _TagPicker extends ConsumerWidget {
                 label: Text(tag.name),
                 selected: selected.contains(tag.id),
                 backgroundColor: parseHexColor(tag.color),
+                labelStyle: chipLabelStyleOn(
+                  parseHexColor(tag.color),
+                  selected: selected.contains(tag.id),
+                ),
                 onSelected: enabled
                     ? (isSelected) => onChanged(
                           isSelected

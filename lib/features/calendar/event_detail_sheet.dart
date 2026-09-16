@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
@@ -501,10 +502,8 @@ class _LinkedListsSection extends ConsumerWidget {
       data: (data) {
         if (data.isEmpty) {
           return const _SectionMessage(
-            // Worth explaining: linking is what surfaces a list on the
-            // dashboard ahead of the event.
-            text: 'No lists linked. Linking one makes it appear in the Lists '
-                'tab before this event.',
+            text: 'No lists linked. A linked list is shown here and opens '
+                'from this event.',
           );
         }
         return Column(
@@ -515,6 +514,10 @@ class _LinkedListsSection extends ConsumerWidget {
                 leading: const Icon(Icons.checklist),
                 title: Text(list.title),
                 subtitle: Text('${list.itemCount} items'),
+                // The route from an event to its list. The Lists tab used to
+                // surface linked lists itself, ahead of the event; it is the
+                // full list browser now, so opening one starts here.
+                onTap: () => context.push('/todo/${list.id}'),
                 trailing: IconButton(
                   icon: const Icon(Icons.link_off, size: 18),
                   onPressed: () async {

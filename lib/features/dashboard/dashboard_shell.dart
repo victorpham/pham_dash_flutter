@@ -6,7 +6,7 @@ import '../../core/providers.dart';
 import '../../core/theme/theme_controller.dart';
 import '../notes/recent_notes_tab.dart';
 import '../schedule/schedule_tab.dart';
-import '../scheduled_lists/scheduled_lists_tab.dart';
+import '../todo/todo_lists_tab.dart';
 import '../weather/weather_tab.dart';
 
 /// The dashboard's content tabs.
@@ -22,6 +22,11 @@ import '../weather/weather_tab.dart';
 /// Weather is the odd one out: it reaches weather.gov and Nominatim directly
 /// rather than the PhamDash API, so it is the only tab that keeps working
 /// while the API is down.
+///
+/// Lists diverges further: on the web it is `ScheduledListsWidget.vue`, a feed
+/// of only what is due in the next few minutes. Here it is the full list
+/// browser that the web keeps behind a drawer link, because a list with no
+/// scheduled time never reached that feed. See `TodoListsTab`.
 ///
 /// The bar around them differs from the web's: Menu still opens the drawer and
 /// People pushes a full screen, but dark mode has moved into the drawer footer,
@@ -47,7 +52,7 @@ enum DashboardTab {
   Widget build() => switch (this) {
         DashboardTab.weather => const WeatherTab(),
         DashboardTab.schedule => const ScheduleTab(),
-        DashboardTab.lists => const ScheduledListsTab(),
+        DashboardTab.lists => const TodoListsTab(),
         DashboardTab.notes => const RecentNotesTab(),
       };
 
@@ -58,21 +63,73 @@ enum DashboardTab {
   /// Scaffold inside another just to hang a button off it.
   Widget? get floatingActionButton => switch (this) {
         DashboardTab.notes => const AddNoteButton(),
+        DashboardTab.lists => const CreateListButton(),
+        _ => null,
+      };
+
+  /// The app bar actions for this tab. Same reasoning as
+  /// [floatingActionButton]: the shell owns the AppBar, so a tab that built one
+  /// of its own would be nesting a second Scaffold to get it.
+  List<Widget> get appBarActions => switch (this) {
+        DashboardTab.lists => const [ShowArchivedButton()],
+        _ => const [],
+      };
+
+  /// The strip under the app bar title, if this tab has one.
+  PreferredSizeWidget? get appBarBottom => switch (this) {
+        DashboardTab.lists => const TodoLabelFilterBar(),
         _ => null,
       };
 }
 
-class DashboardShell extends ConsumerWidget {
+class DashboardShell extends ConsumerStatefulWidget {
   const DashboardShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardShell> createState() => _DashboardShellState();
+}
+
+class _DashboardShellState extends ConsumerState<DashboardShell> {
+  late final AppLifecycleListener _lifecycle;
+
+  @override
+  void initState() {
+    super.initState();
+    // Coming back after an hour away, every tab still shows what it loaded
+    // last time and nothing refetches - so the first tap that does reach the
+    // API pays the whole database resume. Ping on resume so the wake starts
+    // now instead; see `ServerWarmup`. Launch needs no ping of its own: the
+    // Schedule tab's first fetch is one.
+    _lifecycle = AppLifecycleListener(onResume: _warmUp);
+  }
+
+  void _warmUp() {
+    // The shell only mounts behind the router's auth redirect, but a ping
+    // with no session would 401, fail the refresh, and emit `sessionExpired`
+    // - so never send one without a user.
+    if (ref.read(authControllerProvider).value == null) return;
+    ref.read(serverWarmupProvider).ping();
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final navigationShell = widget.navigationShell;
     final tab = DashboardTab.values[navigationShell.currentIndex];
 
     return Scaffold(
-      appBar: AppBar(title: Text(tab.label)),
+      appBar: AppBar(
+        title: Text(tab.label),
+        actions: tab.appBarActions,
+        bottom: tab.appBarBottom,
+      ),
       drawer: const _AppDrawer(),
 
       // Tab content is deliberately full-bleed: the mobile web dashboard
@@ -221,9 +278,11 @@ class _AppDrawer extends ConsumerWidget {
             ),
             const Divider(),
 
-            // Destination order matches the web drawer. Spelling and Family
-            // Tree are shown but disabled — they are a later phase, and leaving
-            // them visible keeps the information architecture honest.
+            // Destination order matches the web drawer, less its Todo Lists
+            // row: that page is the Lists tab now, one tap away in the bar
+            // below. Spelling and Family Tree are shown but disabled — they are
+            // a later phase, and leaving them visible keeps the information
+            // architecture honest.
             ListTile(
               leading: const Icon(Icons.dashboard_outlined),
               title: const Text('Dashboard'),
@@ -246,14 +305,6 @@ class _AppDrawer extends ConsumerWidget {
               onTap: () {
                 Navigator.of(context).pop();
                 context.push('/calendar');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.checklist_outlined),
-              title: const Text('Todo Lists'),
-              onTap: () {
-                Navigator.of(context).pop();
-                context.push('/todo');
               },
             ),
             const ListTile(

@@ -76,8 +76,8 @@ Future<void> _pump(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
-        allPeopleProvider.overrideWith((ref) => _people),
-        personTagsProvider.overrideWith((ref) => const <PersonTag>[]),
+        allPeopleProvider.overrideWithBuild((ref, _) => _people),
+        personTagsProvider.overrideWithBuild((ref, _) => const <PersonTag>[]),
         personProvider.overrideWith(
           (ref, id) => _people.firstWhere((person) => person.id == id),
         ),

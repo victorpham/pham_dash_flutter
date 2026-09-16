@@ -6,110 +6,91 @@ import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
 import '../../data/models/todo_models.dart';
+import 'todo_providers.dart';
 
-final showArchivedProvider = valueProvider<bool>(() => false);
-
-/// Null means "all labels".
-final labelFilterProvider = valueProvider<int?>(() => null);
-
-final todoListsProvider =
-    FutureProvider.autoDispose<List<TodoList>>((ref) async {
-  final includeArchived = ref.watch(showArchivedProvider);
-  final labelId = ref.watch(labelFilterProvider);
-
-  final repository = ref.watch(todoRepositoryProvider);
-  if (labelId != null) return repository.listsWithLabel(labelId);
-  return repository.lists(includeArchived: includeArchived);
-});
-
-final todoLabelsProvider = FutureProvider.autoDispose<List<TodoLabel>>(
-  (ref) => ref.watch(todoRepositoryProvider).labels(),
-);
-
-/// The full todo screen: a card grid of lists with pinned ones first.
-class TodoScreen extends ConsumerStatefulWidget {
-  const TodoScreen({super.key, this.openListId});
-
-  /// Deep link — `/todo?openListId=7` opens that list straight away. The
-  /// dashboard's Lists tab uses this to jump into a list.
-  final int? openListId;
+/// The dashboard's Lists tab: every list as a card, pinned ones first.
+///
+/// This was `/todo`, a drawer destination with its own `Scaffold`, and the tab
+/// was `ScheduledListsTab` — a port of `ScheduledListsWidget.vue` showing only
+/// lists due within minutes, with their items inline. A deliberate divergence
+/// from the web, where the mobile shell's Lists tab is still that widget and
+/// this browser is drawer-only: a list with no `scheduledTime` never reached the
+/// feed, so most of the directory sat two taps into a drawer. The feed was
+/// removed rather than relocated.
+///
+/// Its chrome lives on the shell, not here: [ShowArchivedButton],
+/// [TodoLabelFilterBar] and [CreateListButton] are hung off `DashboardTab`,
+/// because the tabs render into `DashboardShell`'s `Scaffold`.
+class TodoListsTab extends ConsumerWidget {
+  const TodoListsTab({super.key});
 
   @override
-  ConsumerState<TodoScreen> createState() => _TodoScreenState();
-}
-
-class _TodoScreenState extends ConsumerState<TodoScreen> {
-  @override
-  void initState() {
-    super.initState();
-    final id = widget.openListId;
-    if (id != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) context.push('/todo/$id');
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final lists = ref.watch(todoListsProvider);
-    final showArchived = ref.watch(showArchivedProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Todo Lists'),
-        actions: [
-          IconButton(
-            tooltip: showArchived ? 'Hide archived' : 'Show archived',
-            icon: Icon(showArchived ? Icons.archive : Icons.archive_outlined),
-            onPressed: () => ref
-                .read(showArchivedProvider.notifier)
-                .value = !showArchived,
-          ),
-        ],
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(46),
-          child: _LabelFilterBar(),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _createList,
-        child: const Icon(Icons.add),
-      ),
-      body: RefreshIndicator(
-        onRefresh: () => ref.refresh(todoListsProvider.future),
-        child: AsyncView<List<TodoList>>(
-          value: lists,
-          onRetry: () => ref.invalidate(todoListsProvider),
-          emptyIcon: Icons.checklist,
-          emptyTitle: 'No lists yet',
-          emptyMessage: 'Tap + to make one.',
-          builder: (data) {
-            // The API already orders pinned-first, but the web renders them as
-            // their own section rather than relying on ordering alone.
-            final pinned = data.where((l) => l.isPinned).toList();
-            final rest = data.where((l) => !l.isPinned).toList();
+    return RefreshIndicator(
+      onRefresh: () => ref.refresh(todoListsProvider.future),
+      child: AsyncView<List<TodoList>>(
+        value: lists,
+        onRetry: () => ref.invalidate(todoListsProvider),
+        emptyIcon: Icons.checklist,
+        emptyTitle: 'No lists yet',
+        emptyMessage: 'Tap + to make one.',
+        builder: (data) {
+          // The API already orders pinned-first, but the web renders them as
+          // their own section rather than relying on ordering alone.
+          final pinned = data.where((l) => l.isPinned).toList();
+          final rest = data.where((l) => !l.isPinned).toList();
 
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 88),
-              children: [
-                if (pinned.isNotEmpty) ...[
-                  const _SectionLabel('Pinned'),
-                  for (final list in pinned) TodoListCard(list: list),
-                  const SizedBox(height: 8),
-                ],
-                if (rest.isNotEmpty && pinned.isNotEmpty)
-                  const _SectionLabel('All lists'),
-                for (final list in rest) TodoListCard(list: list),
+          return ListView(
+            // The bottom padding clears the shell's 60px bar and its FAB.
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 88),
+            children: [
+              if (pinned.isNotEmpty) ...[
+                const _SectionLabel('Pinned'),
+                for (final list in pinned) TodoListCard(list: list),
+                const SizedBox(height: 8),
               ],
-            );
-          },
-        ),
+              if (rest.isNotEmpty && pinned.isNotEmpty)
+                const _SectionLabel('All lists'),
+              for (final list in rest) TodoListCard(list: list),
+            ],
+          );
+        },
       ),
     );
   }
+}
 
-  Future<void> _createList() async {
+/// Archived lists in or out. Shell-hosted, like [AddNoteButton].
+class ShowArchivedButton extends ConsumerWidget {
+  const ShowArchivedButton({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final showArchived = ref.watch(showArchivedProvider);
+
+    return IconButton(
+      tooltip: showArchived ? 'Hide archived' : 'Show archived',
+      icon: Icon(showArchived ? Icons.archive : Icons.archive_outlined),
+      onPressed: () =>
+          ref.read(showArchivedProvider.notifier).value = !showArchived,
+    );
+  }
+}
+
+/// Creates a list and opens it. Shell-hosted, like [AddNoteButton].
+class CreateListButton extends ConsumerWidget {
+  const CreateListButton({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => FloatingActionButton(
+        tooltip: 'New list',
+        onPressed: () => _createList(context, ref),
+        child: const Icon(Icons.add),
+      );
+
+  Future<void> _createList(BuildContext context, WidgetRef ref) async {
     final controller = TextEditingController();
     final title = await showDialog<String>(
       context: context,
@@ -126,8 +107,7 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () =>
-                Navigator.of(context).pop(controller.text.trim()),
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
             child: const Text('Create'),
           ),
         ],
@@ -142,15 +122,20 @@ class _TodoScreenState extends ConsumerState<TodoScreen> {
         .createList(CreateTodoList(title: title));
     ref.invalidate(todoListsProvider);
 
-    if (created != null && mounted) {
-      if (!context.mounted) return;
+    if (created != null && context.mounted) {
       context.push('/todo/${created.id}');
     }
   }
 }
 
-class _LabelFilterBar extends ConsumerWidget {
-  const _LabelFilterBar();
+/// Narrows the directory to one label. Shell-hosted as the app bar's `bottom`,
+/// which is why it carries its own [preferredSize] rather than being wrapped in
+/// a `PreferredSize` at the call site.
+class TodoLabelFilterBar extends ConsumerWidget implements PreferredSizeWidget {
+  const TodoLabelFilterBar({super.key});
+
+  @override
+  Size get preferredSize => const Size.fromHeight(46);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -181,6 +166,10 @@ class _LabelFilterBar extends ConsumerWidget {
                 label: Text('${label.name} (${label.listCount})'),
                 selected: selected == label.id,
                 backgroundColor: parseHexColor(label.color),
+                labelStyle: chipLabelStyleOn(
+                  parseHexColor(label.color),
+                  selected: selected == label.id,
+                ),
                 onSelected: (isSelected) => ref
                     .read(labelFilterProvider.notifier)
                     .value = isSelected ? label.id : null,
@@ -354,7 +343,16 @@ class TodoListCard extends ConsumerWidget {
                                 ),
                                 child: Text(
                                   label.name,
-                                  style: const TextStyle(fontSize: 10.5),
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    // The label colour is the user's pick and
+                                    // sits directly behind this text, so the
+                                    // foreground has to follow it.
+                                    color: onColor(
+                                      parseHexColor(label.color) ??
+                                          scheme.surfaceContainerHighest,
+                                    ),
+                                  ),
                                 ),
                               ),
                           ],

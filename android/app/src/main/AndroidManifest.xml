@@ -57,5 +57,15 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+
+        <!-- "Open in maps" on the person detail screen. Android 11+ package
+             visibility filters the PackageManager *query* APIs, so without this
+             url_launcher's canLaunchUrl("geo:...") answers false even when a map
+             app is installed. ACTION_VIEW on the geo scheme rather than a named
+             package, so the user's own default map app handles it. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="geo"/>
+        </intent>
     </queries>
 </manifest>

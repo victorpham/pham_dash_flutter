@@ -137,11 +137,6 @@ void main() {
   });
 
   group('day helpers', () {
-    test('dayKey is the yyyy-MM-dd the dismissal store is keyed by', () {
-      expect(ApiDate.dayKey(DateTime(2026, 9, 4, 23, 59)), '2026-09-04');
-      expect(ApiDate.dayKey(DateTime(2026, 12, 25)), '2026-12-25');
-    });
-
     test('startOfDay drops the time', () {
       expect(
         ApiDate.startOfDay(DateTime(2026, 9, 4, 18, 30)),

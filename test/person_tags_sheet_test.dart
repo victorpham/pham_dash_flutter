@@ -56,7 +56,7 @@ Future<_RecordingTags> _pumpSheet(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        personTagsProvider.overrideWith((ref) => const [_pickleball, _coworkers]),
+        personTagsProvider.overrideWithBuild((ref, _) => const [_pickleball, _coworkers]),
         personTagsRepositoryProvider.overrideWithValue(tags),
       ],
       child: MaterialApp(

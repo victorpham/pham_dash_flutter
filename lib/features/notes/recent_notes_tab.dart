@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 
+import '../../core/cache/cached_list.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
@@ -13,9 +14,23 @@ import 'add_note_sheet.dart';
 
 /// The only notes endpoint that embeds the author `person`, so every row can
 /// show an avatar without an extra request.
-final recentNotesProvider = FutureProvider.autoDispose<List<Note>>(
-  (ref) => ref.watch(notesRepositoryProvider).recent(count: 10),
+final recentNotesProvider =
+    AsyncNotifierProvider.autoDispose<RecentNotesNotifier, List<Note>>(
+  RecentNotesNotifier.new,
 );
+
+class RecentNotesNotifier extends AsyncNotifier<List<Note>>
+    with CachedList<Note> {
+  @override
+  Future<List<Note>> build() {
+    persistList(
+      'recent_notes',
+      fromJson: Note.fromJson,
+      toJson: (note) => note.toJson(),
+    );
+    return ref.watch(notesRepositoryProvider).recent(count: 10);
+  }
+}
 
 /// The Notes tab's action button, hosted by the dashboard shell's Scaffold.
 class AddNoteButton extends ConsumerWidget {

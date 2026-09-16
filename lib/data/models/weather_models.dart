@@ -123,9 +123,14 @@ class WeatherForecast {
     required this.daily,
     required this.hourly,
     required this.extendedHourly,
+    required this.fetchedAt,
   });
 
   final WeatherLocation location;
+
+  /// When this snapshot was pulled from weather.gov. The Weather tab shows it,
+  /// and refreshes on a visit once it is more than fifteen minutes old.
+  final DateTime fetchedAt;
 
   /// Up to seven days.
   final List<DailyForecast> daily;
