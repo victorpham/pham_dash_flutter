@@ -86,7 +86,11 @@
 	     POST /api/people/{id}/profile-picture. Without this key iOS terminates
 	     the app the moment the picker opens. -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Choose a profile picture for someone in your family directory.</string>
+	<string>Choose a profile picture for someone in your family directory, or a picture for a list item.</string>
+	<!-- Todo list items can take a photo straight from the camera (long-press
+	     an item, "Take photo"). Same rule: no key, no app. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo of a list item so it is easier to recognise while shopping.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<!-- Dev only: the iOS simulator reaches a locally-running API over plain

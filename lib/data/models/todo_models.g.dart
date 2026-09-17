@@ -14,6 +14,7 @@ _TodoItem _$TodoItemFromJson(Map<String, dynamic> json) => _TodoItem(
   isCompleted: json['isCompleted'] as bool? ?? false,
   displayOrder: (json['displayOrder'] as num?)?.toInt() ?? 0,
   indentLevel: (json['indentLevel'] as num?)?.toInt() ?? 0,
+  imageUrl: json['imageUrl'] as String?,
   createdAt: const UtcStamp().fromJson(json['createdAt'] as String?),
   completedAt: const UtcStamp().fromJson(json['completedAt'] as String?),
 );
@@ -26,6 +27,7 @@ Map<String, dynamic> _$TodoItemToJson(_TodoItem instance) => <String, dynamic>{
   'isCompleted': instance.isCompleted,
   'displayOrder': instance.displayOrder,
   'indentLevel': instance.indentLevel,
+  'imageUrl': instance.imageUrl,
   'createdAt': const UtcStamp().toJson(instance.createdAt),
   'completedAt': const UtcStamp().toJson(instance.completedAt),
 };

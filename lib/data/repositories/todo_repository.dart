@@ -102,6 +102,30 @@ class TodoRepository {
 
   Future<void> deleteItem(int itemId) => _api.delete('/todo/items/$itemId');
 
+  /// Sets the item's picture, replacing any it already had. One picture per
+  /// item - there is no gallery, unlike a person.
+  ///
+  /// Multipart with the field named `file`; the server enforces the type and
+  /// 5 MB rules and answers 400 with a readable message when they fail. Also
+  /// cleaned up server-side when the item or its list is deleted.
+  Future<TodoItem?> setItemImage(
+    int itemId, {
+    required String filePath,
+    required String fileName,
+  }) async =>
+      decodeOrNull(
+        await _api.upload<dynamic>(
+          '/todo/items/$itemId/image',
+          filePath: filePath,
+          fileName: fileName,
+        ),
+        TodoItem.fromJson,
+      );
+
+  /// Removes the item's picture. Idempotent: answers 200 even if it had none.
+  Future<void> removeItemImage(int itemId) =>
+      _api.delete('/todo/items/$itemId/image');
+
   /// Flips completion, and sets or clears `completedAt` server-side.
   Future<TodoItem?> toggleItem(int itemId) async => decodeOrNull(
         await _api.post<dynamic>('/todo/items/$itemId/toggle'),

@@ -21,6 +21,11 @@ abstract class TodoItem with _$TodoItem {
 
     /// 0-2. The web UI caps nesting at 2 and forbids indenting the first item.
     @JsonKey(defaultValue: 0) required int indentLevel,
+
+    /// Signed, root-relative picture of the item, or null. Resolve with
+    /// `AppConfig.mediaUrl`. Set and cleared through the dedicated image
+    /// endpoints - `UpdateTodoItem` cannot touch it.
+    String? imageUrl,
     @UtcStamp() DateTime? createdAt,
     @UtcStamp() DateTime? completedAt,
   }) = _TodoItem;

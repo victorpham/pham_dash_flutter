@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/api/api_date.dart';
 import '../../core/api/api_exception.dart';
@@ -10,6 +11,7 @@ import '../../core/ui/color_picker_sheet.dart';
 import '../../core/ui/person_picker.dart';
 import '../../data/models/todo_models.dart';
 import '../people/people_providers.dart';
+import 'todo_item_image.dart';
 import 'todo_labels_sheet.dart';
 import 'todo_providers.dart';
 
@@ -601,6 +603,153 @@ class _ItemRow extends ConsumerWidget {
   final int index;
   final bool inGroup;
 
+  /// Long-press menu. Used to go straight to the text prompt; the picture
+  /// actions needed somewhere to live and a second gesture would have been
+  /// worse than one more tap.
+  Future<void> _showActions(BuildContext context, WidgetRef ref) async {
+    final action = await showModalBottomSheet<_ItemAction>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(
+                item.content,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Edit text'),
+              onTap: () => Navigator.pop(context, _ItemAction.edit),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take photo'),
+              onTap: () => Navigator.pop(context, _ItemAction.takePhoto),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(context, _ItemAction.choosePhoto),
+            ),
+            if (item.imageUrl != null)
+              ListTile(
+                leading: const Icon(Icons.hide_image_outlined),
+                title: const Text('Remove photo'),
+                onTap: () => Navigator.pop(context, _ItemAction.removePhoto),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (action == null || !context.mounted) return;
+
+    switch (action) {
+      case _ItemAction.edit:
+        await _editText(context, ref);
+      case _ItemAction.takePhoto:
+        await _setPhoto(context, ref, ImageSource.camera);
+      case _ItemAction.choosePhoto:
+        await _setPhoto(context, ref, ImageSource.gallery);
+      case _ItemAction.removePhoto:
+        await _removePhoto(context, ref);
+    }
+  }
+
+  Future<void> _editText(BuildContext context, WidgetRef ref) async {
+    final content = await promptForText(context, 'Edit item', item.content);
+    if (content == null) return;
+    await ref
+        .read(todoRepositoryProvider)
+        .updateItem(item.id, UpdateTodoItem(content: content));
+    ref.invalidate(todoListDetailProvider(listId));
+  }
+
+  Future<void> _setPhoto(
+    BuildContext context,
+    WidgetRef ref,
+    ImageSource source,
+  ) async {
+    final picked = await ImagePicker().pickImage(
+      source: source,
+      // Downscaling is what usually keeps a phone photo under the server's
+      // 5 MB ceiling - same numbers the person edit sheet uses.
+      maxWidth: 1200,
+      maxHeight: 1200,
+      imageQuality: 85,
+    );
+    if (picked == null || !context.mounted) return;
+
+    final tooLarge = await picked.length() > kMaxItemImageBytes;
+    if (!context.mounted) return;
+    if (tooLarge) {
+      _toast(context, 'That image is larger than 5 MB.');
+      return;
+    }
+
+    await _runImageWrite(
+      context,
+      ref,
+      () => ref.read(todoRepositoryProvider).setItemImage(
+            item.id,
+            filePath: picked.path,
+            fileName: picked.name,
+          ),
+    );
+  }
+
+  Future<void> _removePhoto(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove this photo?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    await _runImageWrite(
+      context,
+      ref,
+      () => ref.read(todoRepositoryProvider).removeItemImage(item.id),
+    );
+  }
+
+  /// Runs a picture write and re-reads the list. The lists tab is refreshed
+  /// too, since its cached copy carries the items and would otherwise show a
+  /// stale (or already-signed-out) picture on the next cold start.
+  Future<void> _runImageWrite(
+    BuildContext context,
+    WidgetRef ref,
+    Future<void> Function() write,
+  ) async {
+    try {
+      await write();
+    } on ApiException catch (error) {
+      // The 400 for a bad type or size names the allowed types; use it.
+      if (context.mounted) _toast(context, error.message);
+      return;
+    }
+    ref.invalidate(todoListDetailProvider(listId));
+    ref.invalidate(todoListsProvider);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
@@ -626,16 +775,7 @@ class _ItemRow extends ConsumerWidget {
           ref.invalidate(todoListDetailProvider(listId));
           ref.invalidate(todoListsProvider);
         },
-        onLongPress: () async {
-          final content =
-              await promptForText(context, 'Edit item', item.content);
-          if (content == null) return;
-          await repository.updateItem(
-            item.id,
-            UpdateTodoItem(content: content),
-          );
-          ref.invalidate(todoListDetailProvider(listId));
-        },
+        onLongPress: () => _showActions(context, ref),
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             16 + item.indentLevel * 18.0 + (inGroup ? 12 : 0),
@@ -653,6 +793,7 @@ class _ItemRow extends ConsumerWidget {
                 color: item.isCompleted ? scheme.completed : scheme.outline,
               ),
               const SizedBox(width: 10),
+              TodoItemThumbnail(item: item),
               Expanded(
                 child: Text(
                   item.content,
@@ -925,3 +1066,5 @@ Future<String?> promptForText(
 void _toast(BuildContext context, String message) =>
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+
+enum _ItemAction { edit, takePhoto, choosePhoto, removePhoto }
