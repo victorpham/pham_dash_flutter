@@ -22,7 +22,10 @@ mixin _$TodoItem {
 @JsonKey(defaultValue: 0) int get indentLevel;/// Signed, root-relative picture of the item, or null. Resolve with
 /// `AppConfig.mediaUrl`. Set and cleared through the dedicated image
 /// endpoints - `UpdateTodoItem` cannot touch it.
- String? get imageUrl;@UtcStamp() DateTime? get createdAt;@UtcStamp() DateTime? get completedAt;
+ String? get imageUrl;/// Where to find it in the shop - "Aisle 7", "Bakery". Free text, null when
+/// unset; the server never returns `""`. Cleared with `""` on the wire - see
+/// `UpdateTodoItem.clearLocation`.
+ String? get location;@UtcStamp() DateTime? get createdAt;@UtcStamp() DateTime? get completedAt;
 /// Create a copy of TodoItem
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -36,20 +39,20 @@ $TodoItemCopyWith<TodoItem> get copyWith => _$TodoItemCopyWithImpl<TodoItem>(thi
 @override
 bool operator ==(Object other) {
   final _this = this as TodoItem;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is TodoItem&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.todoListId, _this.todoListId) || other.todoListId == _this.todoListId)&&(identical(other.groupId, _this.groupId) || other.groupId == _this.groupId)&&(identical(other.content, _this.content) || other.content == _this.content)&&(identical(other.isCompleted, _this.isCompleted) || other.isCompleted == _this.isCompleted)&&(identical(other.displayOrder, _this.displayOrder) || other.displayOrder == _this.displayOrder)&&(identical(other.indentLevel, _this.indentLevel) || other.indentLevel == _this.indentLevel)&&(identical(other.imageUrl, _this.imageUrl) || other.imageUrl == _this.imageUrl)&&(identical(other.createdAt, _this.createdAt) || other.createdAt == _this.createdAt)&&(identical(other.completedAt, _this.completedAt) || other.completedAt == _this.completedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is TodoItem&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.todoListId, _this.todoListId) || other.todoListId == _this.todoListId)&&(identical(other.groupId, _this.groupId) || other.groupId == _this.groupId)&&(identical(other.content, _this.content) || other.content == _this.content)&&(identical(other.isCompleted, _this.isCompleted) || other.isCompleted == _this.isCompleted)&&(identical(other.displayOrder, _this.displayOrder) || other.displayOrder == _this.displayOrder)&&(identical(other.indentLevel, _this.indentLevel) || other.indentLevel == _this.indentLevel)&&(identical(other.imageUrl, _this.imageUrl) || other.imageUrl == _this.imageUrl)&&(identical(other.location, _this.location) || other.location == _this.location)&&(identical(other.createdAt, _this.createdAt) || other.createdAt == _this.createdAt)&&(identical(other.completedAt, _this.completedAt) || other.completedAt == _this.completedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as TodoItem;
-  return Object.hash(runtimeType,_this.id,_this.todoListId,_this.groupId,_this.content,_this.isCompleted,_this.displayOrder,_this.indentLevel,_this.imageUrl,_this.createdAt,_this.completedAt);
+  return Object.hash(runtimeType,_this.id,_this.todoListId,_this.groupId,_this.content,_this.isCompleted,_this.displayOrder,_this.indentLevel,_this.imageUrl,_this.location,_this.createdAt,_this.completedAt);
 }
 
 @override
 String toString() {
   final _this = this as TodoItem;
-  return 'TodoItem(id: ${_this.id}, todoListId: ${_this.todoListId}, groupId: ${_this.groupId}, content: ${_this.content}, isCompleted: ${_this.isCompleted}, displayOrder: ${_this.displayOrder}, indentLevel: ${_this.indentLevel}, imageUrl: ${_this.imageUrl}, createdAt: ${_this.createdAt}, completedAt: ${_this.completedAt})';
+  return 'TodoItem(id: ${_this.id}, todoListId: ${_this.todoListId}, groupId: ${_this.groupId}, content: ${_this.content}, isCompleted: ${_this.isCompleted}, displayOrder: ${_this.displayOrder}, indentLevel: ${_this.indentLevel}, imageUrl: ${_this.imageUrl}, location: ${_this.location}, createdAt: ${_this.createdAt}, completedAt: ${_this.completedAt})';
 }
 
 
@@ -60,7 +63,7 @@ abstract mixin class $TodoItemCopyWith<$Res>  {
   factory $TodoItemCopyWith(TodoItem value, $Res Function(TodoItem) _then) = _$TodoItemCopyWithImpl;
 @useResult
 $Res call({
- int id, int todoListId, int? groupId, String content,@JsonKey(defaultValue: false) bool isCompleted,@JsonKey(defaultValue: 0) int displayOrder,@JsonKey(defaultValue: 0) int indentLevel, String? imageUrl,@UtcStamp() DateTime? createdAt,@UtcStamp() DateTime? completedAt
+ int id, int todoListId, int? groupId, String content,@JsonKey(defaultValue: false) bool isCompleted,@JsonKey(defaultValue: 0) int displayOrder,@JsonKey(defaultValue: 0) int indentLevel, String? imageUrl, String? location,@UtcStamp() DateTime? createdAt,@UtcStamp() DateTime? completedAt
 });
 
 
@@ -77,7 +80,7 @@ class _$TodoItemCopyWithImpl<$Res>
 
 /// Create a copy of TodoItem
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? todoListId = null,Object? groupId = freezed,Object? content = null,Object? isCompleted = null,Object? displayOrder = null,Object? indentLevel = null,Object? imageUrl = freezed,Object? createdAt = freezed,Object? completedAt = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? todoListId = null,Object? groupId = freezed,Object? content = null,Object? isCompleted = null,Object? displayOrder = null,Object? indentLevel = null,Object? imageUrl = freezed,Object? location = freezed,Object? createdAt = freezed,Object? completedAt = freezed,}) {
   return _then(TodoItem(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as int,todoListId: null == todoListId ? _self.todoListId : todoListId // ignore: cast_nullable_to_non_nullable
@@ -87,6 +90,7 @@ as String,isCompleted: null == isCompleted ? _self.isCompleted : isCompleted // 
 as bool,displayOrder: null == displayOrder ? _self.displayOrder : displayOrder // ignore: cast_nullable_to_non_nullable
 as int,indentLevel: null == indentLevel ? _self.indentLevel : indentLevel // ignore: cast_nullable_to_non_nullable
 as int,imageUrl: freezed == imageUrl ? _self.imageUrl : imageUrl // ignore: cast_nullable_to_non_nullable
+as String?,location: freezed == location ? _self.location : location // ignore: cast_nullable_to_non_nullable
 as String?,createdAt: freezed == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,completedAt: freezed == completedAt ? _self.completedAt : completedAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,
@@ -174,10 +178,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int id,  int todoListId,  int? groupId,  String content, @JsonKey(defaultValue: false)  bool isCompleted, @JsonKey(defaultValue: 0)  int displayOrder, @JsonKey(defaultValue: 0)  int indentLevel,  String? imageUrl, @UtcStamp()  DateTime? createdAt, @UtcStamp()  DateTime? completedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( int id,  int todoListId,  int? groupId,  String content, @JsonKey(defaultValue: false)  bool isCompleted, @JsonKey(defaultValue: 0)  int displayOrder, @JsonKey(defaultValue: 0)  int indentLevel,  String? imageUrl,  String? location, @UtcStamp()  DateTime? createdAt, @UtcStamp()  DateTime? completedAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _TodoItem() when $default != null:
-return $default(_that.id,_that.todoListId,_that.groupId,_that.content,_that.isCompleted,_that.displayOrder,_that.indentLevel,_that.imageUrl,_that.createdAt,_that.completedAt);case _:
+return $default(_that.id,_that.todoListId,_that.groupId,_that.content,_that.isCompleted,_that.displayOrder,_that.indentLevel,_that.imageUrl,_that.location,_that.createdAt,_that.completedAt);case _:
   return orElse();
 
 }
@@ -195,10 +199,10 @@ return $default(_that.id,_that.todoListId,_that.groupId,_that.content,_that.isCo
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int id,  int todoListId,  int? groupId,  String content, @JsonKey(defaultValue: false)  bool isCompleted, @JsonKey(defaultValue: 0)  int displayOrder, @JsonKey(defaultValue: 0)  int indentLevel,  String? imageUrl, @UtcStamp()  DateTime? createdAt, @UtcStamp()  DateTime? completedAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( int id,  int todoListId,  int? groupId,  String content, @JsonKey(defaultValue: false)  bool isCompleted, @JsonKey(defaultValue: 0)  int displayOrder, @JsonKey(defaultValue: 0)  int indentLevel,  String? imageUrl,  String? location, @UtcStamp()  DateTime? createdAt, @UtcStamp()  DateTime? completedAt)  $default,) {final _that = this;
 switch (_that) {
 case _TodoItem():
-return $default(_that.id,_that.todoListId,_that.groupId,_that.content,_that.isCompleted,_that.displayOrder,_that.indentLevel,_that.imageUrl,_that.createdAt,_that.completedAt);case _:
+return $default(_that.id,_that.todoListId,_that.groupId,_that.content,_that.isCompleted,_that.displayOrder,_that.indentLevel,_that.imageUrl,_that.location,_that.createdAt,_that.completedAt);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -215,10 +219,10 @@ return $default(_that.id,_that.todoListId,_that.groupId,_that.content,_that.isCo
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int id,  int todoListId,  int? groupId,  String content, @JsonKey(defaultValue: false)  bool isCompleted, @JsonKey(defaultValue: 0)  int displayOrder, @JsonKey(defaultValue: 0)  int indentLevel,  String? imageUrl, @UtcStamp()  DateTime? createdAt, @UtcStamp()  DateTime? completedAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( int id,  int todoListId,  int? groupId,  String content, @JsonKey(defaultValue: false)  bool isCompleted, @JsonKey(defaultValue: 0)  int displayOrder, @JsonKey(defaultValue: 0)  int indentLevel,  String? imageUrl,  String? location, @UtcStamp()  DateTime? createdAt, @UtcStamp()  DateTime? completedAt)?  $default,) {final _that = this;
 switch (_that) {
 case _TodoItem() when $default != null:
-return $default(_that.id,_that.todoListId,_that.groupId,_that.content,_that.isCompleted,_that.displayOrder,_that.indentLevel,_that.imageUrl,_that.createdAt,_that.completedAt);case _:
+return $default(_that.id,_that.todoListId,_that.groupId,_that.content,_that.isCompleted,_that.displayOrder,_that.indentLevel,_that.imageUrl,_that.location,_that.createdAt,_that.completedAt);case _:
   return null;
 
 }
@@ -230,7 +234,7 @@ return $default(_that.id,_that.todoListId,_that.groupId,_that.content,_that.isCo
 @JsonSerializable()
 
 class _TodoItem implements TodoItem {
-  const _TodoItem({required this.id, required this.todoListId, this.groupId, required this.content, @JsonKey(defaultValue: false) required this.isCompleted, @JsonKey(defaultValue: 0) required this.displayOrder, @JsonKey(defaultValue: 0) required this.indentLevel, this.imageUrl, @UtcStamp() this.createdAt, @UtcStamp() this.completedAt});
+  const _TodoItem({required this.id, required this.todoListId, this.groupId, required this.content, @JsonKey(defaultValue: false) required this.isCompleted, @JsonKey(defaultValue: 0) required this.displayOrder, @JsonKey(defaultValue: 0) required this.indentLevel, this.imageUrl, this.location, @UtcStamp() this.createdAt, @UtcStamp() this.completedAt});
   factory _TodoItem.fromJson(Map<String, dynamic> json) => _$TodoItemFromJson(json);
 
 @override final  int id;
@@ -247,6 +251,10 @@ class _TodoItem implements TodoItem {
 /// `AppConfig.mediaUrl`. Set and cleared through the dedicated image
 /// endpoints - `UpdateTodoItem` cannot touch it.
 @override final  String? imageUrl;
+/// Where to find it in the shop - "Aisle 7", "Bakery". Free text, null when
+/// unset; the server never returns `""`. Cleared with `""` on the wire - see
+/// `UpdateTodoItem.clearLocation`.
+@override final  String? location;
 @override@UtcStamp() final  DateTime? createdAt;
 @override@UtcStamp() final  DateTime? completedAt;
 
@@ -263,18 +271,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _TodoItem&&(identical(other.id, id) || other.id == id)&&(identical(other.todoListId, todoListId) || other.todoListId == todoListId)&&(identical(other.groupId, groupId) || other.groupId == groupId)&&(identical(other.content, content) || other.content == content)&&(identical(other.isCompleted, isCompleted) || other.isCompleted == isCompleted)&&(identical(other.displayOrder, displayOrder) || other.displayOrder == displayOrder)&&(identical(other.indentLevel, indentLevel) || other.indentLevel == indentLevel)&&(identical(other.imageUrl, imageUrl) || other.imageUrl == imageUrl)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.completedAt, completedAt) || other.completedAt == completedAt));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _TodoItem&&(identical(other.id, id) || other.id == id)&&(identical(other.todoListId, todoListId) || other.todoListId == todoListId)&&(identical(other.groupId, groupId) || other.groupId == groupId)&&(identical(other.content, content) || other.content == content)&&(identical(other.isCompleted, isCompleted) || other.isCompleted == isCompleted)&&(identical(other.displayOrder, displayOrder) || other.displayOrder == displayOrder)&&(identical(other.indentLevel, indentLevel) || other.indentLevel == indentLevel)&&(identical(other.imageUrl, imageUrl) || other.imageUrl == imageUrl)&&(identical(other.location, location) || other.location == location)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.completedAt, completedAt) || other.completedAt == completedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,id,todoListId,groupId,content,isCompleted,displayOrder,indentLevel,imageUrl,createdAt,completedAt);
+    return Object.hash(runtimeType,id,todoListId,groupId,content,isCompleted,displayOrder,indentLevel,imageUrl,location,createdAt,completedAt);
 }
 
 @override
 String toString() {
-    return 'TodoItem(id: $id, todoListId: $todoListId, groupId: $groupId, content: $content, isCompleted: $isCompleted, displayOrder: $displayOrder, indentLevel: $indentLevel, imageUrl: $imageUrl, createdAt: $createdAt, completedAt: $completedAt)';
+    return 'TodoItem(id: $id, todoListId: $todoListId, groupId: $groupId, content: $content, isCompleted: $isCompleted, displayOrder: $displayOrder, indentLevel: $indentLevel, imageUrl: $imageUrl, location: $location, createdAt: $createdAt, completedAt: $completedAt)';
 }
 
 
@@ -285,7 +293,7 @@ abstract mixin class _$TodoItemCopyWith<$Res> implements $TodoItemCopyWith<$Res>
   factory _$TodoItemCopyWith(_TodoItem value, $Res Function(_TodoItem) _then) = __$TodoItemCopyWithImpl;
 @override @useResult
 $Res call({
- int id, int todoListId, int? groupId, String content,@JsonKey(defaultValue: false) bool isCompleted,@JsonKey(defaultValue: 0) int displayOrder,@JsonKey(defaultValue: 0) int indentLevel, String? imageUrl,@UtcStamp() DateTime? createdAt,@UtcStamp() DateTime? completedAt
+ int id, int todoListId, int? groupId, String content,@JsonKey(defaultValue: false) bool isCompleted,@JsonKey(defaultValue: 0) int displayOrder,@JsonKey(defaultValue: 0) int indentLevel, String? imageUrl, String? location,@UtcStamp() DateTime? createdAt,@UtcStamp() DateTime? completedAt
 });
 
 
@@ -302,7 +310,7 @@ class __$TodoItemCopyWithImpl<$Res>
 
 /// Create a copy of TodoItem
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? todoListId = null,Object? groupId = freezed,Object? content = null,Object? isCompleted = null,Object? displayOrder = null,Object? indentLevel = null,Object? imageUrl = freezed,Object? createdAt = freezed,Object? completedAt = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? todoListId = null,Object? groupId = freezed,Object? content = null,Object? isCompleted = null,Object? displayOrder = null,Object? indentLevel = null,Object? imageUrl = freezed,Object? location = freezed,Object? createdAt = freezed,Object? completedAt = freezed,}) {
   return _then(_TodoItem(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as int,todoListId: null == todoListId ? _self.todoListId : todoListId // ignore: cast_nullable_to_non_nullable
@@ -312,6 +320,7 @@ as String,isCompleted: null == isCompleted ? _self.isCompleted : isCompleted // 
 as bool,displayOrder: null == displayOrder ? _self.displayOrder : displayOrder // ignore: cast_nullable_to_non_nullable
 as int,indentLevel: null == indentLevel ? _self.indentLevel : indentLevel // ignore: cast_nullable_to_non_nullable
 as int,imageUrl: freezed == imageUrl ? _self.imageUrl : imageUrl // ignore: cast_nullable_to_non_nullable
+as String?,location: freezed == location ? _self.location : location // ignore: cast_nullable_to_non_nullable
 as String?,createdAt: freezed == createdAt ? _self.createdAt : createdAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,completedAt: freezed == completedAt ? _self.completedAt : completedAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,
@@ -1857,7 +1866,7 @@ as List<CreateTodoItem>?,
 /// @nodoc
 mixin _$CreateTodoItem {
 
- String get content;@JsonKey(defaultValue: 0) int? get indentLevel; int? get groupId;
+ String get content;@JsonKey(defaultValue: 0) int? get indentLevel; int? get groupId; String? get location;
 /// Create a copy of CreateTodoItem
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -1871,20 +1880,20 @@ $CreateTodoItemCopyWith<CreateTodoItem> get copyWith => _$CreateTodoItemCopyWith
 @override
 bool operator ==(Object other) {
   final _this = this as CreateTodoItem;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is CreateTodoItem&&(identical(other.content, _this.content) || other.content == _this.content)&&(identical(other.indentLevel, _this.indentLevel) || other.indentLevel == _this.indentLevel)&&(identical(other.groupId, _this.groupId) || other.groupId == _this.groupId));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CreateTodoItem&&(identical(other.content, _this.content) || other.content == _this.content)&&(identical(other.indentLevel, _this.indentLevel) || other.indentLevel == _this.indentLevel)&&(identical(other.groupId, _this.groupId) || other.groupId == _this.groupId)&&(identical(other.location, _this.location) || other.location == _this.location));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as CreateTodoItem;
-  return Object.hash(runtimeType,_this.content,_this.indentLevel,_this.groupId);
+  return Object.hash(runtimeType,_this.content,_this.indentLevel,_this.groupId,_this.location);
 }
 
 @override
 String toString() {
   final _this = this as CreateTodoItem;
-  return 'CreateTodoItem(content: ${_this.content}, indentLevel: ${_this.indentLevel}, groupId: ${_this.groupId})';
+  return 'CreateTodoItem(content: ${_this.content}, indentLevel: ${_this.indentLevel}, groupId: ${_this.groupId}, location: ${_this.location})';
 }
 
 
@@ -1895,7 +1904,7 @@ abstract mixin class $CreateTodoItemCopyWith<$Res>  {
   factory $CreateTodoItemCopyWith(CreateTodoItem value, $Res Function(CreateTodoItem) _then) = _$CreateTodoItemCopyWithImpl;
 @useResult
 $Res call({
- String content,@JsonKey(defaultValue: 0) int? indentLevel, int? groupId
+ String content,@JsonKey(defaultValue: 0) int? indentLevel, int? groupId, String? location
 });
 
 
@@ -1912,12 +1921,13 @@ class _$CreateTodoItemCopyWithImpl<$Res>
 
 /// Create a copy of CreateTodoItem
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? content = null,Object? indentLevel = freezed,Object? groupId = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? content = null,Object? indentLevel = freezed,Object? groupId = freezed,Object? location = freezed,}) {
   return _then(CreateTodoItem(
 content: null == content ? _self.content : content // ignore: cast_nullable_to_non_nullable
 as String,indentLevel: freezed == indentLevel ? _self.indentLevel : indentLevel // ignore: cast_nullable_to_non_nullable
 as int?,groupId: freezed == groupId ? _self.groupId : groupId // ignore: cast_nullable_to_non_nullable
-as int?,
+as int?,location: freezed == location ? _self.location : location // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 
@@ -2002,10 +2012,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String content, @JsonKey(defaultValue: 0)  int? indentLevel,  int? groupId)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String content, @JsonKey(defaultValue: 0)  int? indentLevel,  int? groupId,  String? location)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _CreateTodoItem() when $default != null:
-return $default(_that.content,_that.indentLevel,_that.groupId);case _:
+return $default(_that.content,_that.indentLevel,_that.groupId,_that.location);case _:
   return orElse();
 
 }
@@ -2023,10 +2033,10 @@ return $default(_that.content,_that.indentLevel,_that.groupId);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String content, @JsonKey(defaultValue: 0)  int? indentLevel,  int? groupId)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String content, @JsonKey(defaultValue: 0)  int? indentLevel,  int? groupId,  String? location)  $default,) {final _that = this;
 switch (_that) {
 case _CreateTodoItem():
-return $default(_that.content,_that.indentLevel,_that.groupId);case _:
+return $default(_that.content,_that.indentLevel,_that.groupId,_that.location);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -2043,10 +2053,10 @@ return $default(_that.content,_that.indentLevel,_that.groupId);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String content, @JsonKey(defaultValue: 0)  int? indentLevel,  int? groupId)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String content, @JsonKey(defaultValue: 0)  int? indentLevel,  int? groupId,  String? location)?  $default,) {final _that = this;
 switch (_that) {
 case _CreateTodoItem() when $default != null:
-return $default(_that.content,_that.indentLevel,_that.groupId);case _:
+return $default(_that.content,_that.indentLevel,_that.groupId,_that.location);case _:
   return null;
 
 }
@@ -2058,12 +2068,13 @@ return $default(_that.content,_that.indentLevel,_that.groupId);case _:
 @JsonSerializable()
 
 class _CreateTodoItem implements CreateTodoItem {
-  const _CreateTodoItem({required this.content, @JsonKey(defaultValue: 0) this.indentLevel, this.groupId});
+  const _CreateTodoItem({required this.content, @JsonKey(defaultValue: 0) this.indentLevel, this.groupId, this.location});
   factory _CreateTodoItem.fromJson(Map<String, dynamic> json) => _$CreateTodoItemFromJson(json);
 
 @override final  String content;
 @override@JsonKey(defaultValue: 0) final  int? indentLevel;
 @override final  int? groupId;
+@override final  String? location;
 
 /// Create a copy of CreateTodoItem
 /// with the given fields replaced by the non-null parameter values.
@@ -2078,18 +2089,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _CreateTodoItem&&(identical(other.content, content) || other.content == content)&&(identical(other.indentLevel, indentLevel) || other.indentLevel == indentLevel)&&(identical(other.groupId, groupId) || other.groupId == groupId));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _CreateTodoItem&&(identical(other.content, content) || other.content == content)&&(identical(other.indentLevel, indentLevel) || other.indentLevel == indentLevel)&&(identical(other.groupId, groupId) || other.groupId == groupId)&&(identical(other.location, location) || other.location == location));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,content,indentLevel,groupId);
+    return Object.hash(runtimeType,content,indentLevel,groupId,location);
 }
 
 @override
 String toString() {
-    return 'CreateTodoItem(content: $content, indentLevel: $indentLevel, groupId: $groupId)';
+    return 'CreateTodoItem(content: $content, indentLevel: $indentLevel, groupId: $groupId, location: $location)';
 }
 
 
@@ -2100,7 +2111,7 @@ abstract mixin class _$CreateTodoItemCopyWith<$Res> implements $CreateTodoItemCo
   factory _$CreateTodoItemCopyWith(_CreateTodoItem value, $Res Function(_CreateTodoItem) _then) = __$CreateTodoItemCopyWithImpl;
 @override @useResult
 $Res call({
- String content,@JsonKey(defaultValue: 0) int? indentLevel, int? groupId
+ String content,@JsonKey(defaultValue: 0) int? indentLevel, int? groupId, String? location
 });
 
 
@@ -2117,12 +2128,13 @@ class __$CreateTodoItemCopyWithImpl<$Res>
 
 /// Create a copy of CreateTodoItem
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? content = null,Object? indentLevel = freezed,Object? groupId = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? content = null,Object? indentLevel = freezed,Object? groupId = freezed,Object? location = freezed,}) {
   return _then(_CreateTodoItem(
 content: null == content ? _self.content : content // ignore: cast_nullable_to_non_nullable
 as String,indentLevel: freezed == indentLevel ? _self.indentLevel : indentLevel // ignore: cast_nullable_to_non_nullable
 as int?,groupId: freezed == groupId ? _self.groupId : groupId // ignore: cast_nullable_to_non_nullable
-as int?,
+as int?,location: freezed == location ? _self.location : location // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 

@@ -81,6 +81,7 @@ class TodoRepository {
     required String content,
     int? indentLevel,
     int? groupId,
+    String? location,
   }) async =>
       decodeOrNull(
         await _api.post<dynamic>(
@@ -89,6 +90,7 @@ class TodoRepository {
             'content': content,
             'indentLevel': ?indentLevel,
             'groupId': ?groupId,
+            'location': ?location,
           },
         ),
         TodoItem.fromJson,

@@ -15,10 +15,10 @@ import 'todo_item_image.dart';
 import 'todo_labels_sheet.dart';
 import 'todo_providers.dart';
 
-final todoListDetailProvider =
-    FutureProvider.autoDispose.family<TodoList?, int>(
-  (ref, id) => ref.watch(todoRepositoryProvider).list(id),
-);
+final todoListDetailProvider = FutureProvider.autoDispose
+    .family<TodoList?, int>(
+      (ref, id) => ref.watch(todoRepositoryProvider).list(id),
+    );
 
 /// The list editor.
 ///
@@ -48,16 +48,20 @@ class TodoListDetailScreen extends ConsumerWidget {
               itemBuilder: (context) => [
                 const PopupMenuItem(value: 'rename', child: Text('Rename')),
                 const PopupMenuItem(value: 'color', child: Text('Colour…')),
-                const PopupMenuItem(value: 'schedule', child: Text('Schedule…')),
-                const PopupMenuItem(value: 'person', child: Text('Link person…')),
+                const PopupMenuItem(
+                  value: 'schedule',
+                  child: Text('Schedule…'),
+                ),
+                const PopupMenuItem(
+                  value: 'person',
+                  child: Text('Link person…'),
+                ),
                 const PopupMenuItem(value: 'labels', child: Text('Labels…')),
                 const PopupMenuItem(value: 'group', child: Text('Add group')),
                 const PopupMenuItem(value: 'reset', child: Text('Reset items')),
                 PopupMenuItem(
                   value: 'archive',
-                  child: Text(
-                    list.value!.isArchived ? 'Unarchive' : 'Archive',
-                  ),
+                  child: Text(list.value!.isArchived ? 'Unarchive' : 'Archive'),
                 ),
                 const PopupMenuItem(value: 'delete', child: Text('Delete')),
               ],
@@ -166,11 +170,17 @@ class TodoListDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _addItem(BuildContext context, WidgetRef ref) async {
-    final content = await promptForText(context, 'Add item', '');
-    if (content == null) return;
+    final entered = await promptForItem(context, 'Add item');
+    if (entered == null) return;
 
     try {
-      await ref.read(todoRepositoryProvider).addItem(listId, content: content);
+      await ref
+          .read(todoRepositoryProvider)
+          .addItem(
+            listId,
+            content: entered.content,
+            location: entered.location,
+          );
     } on ApiException catch (error) {
       if (context.mounted) _toast(context, error.message);
       return;
@@ -195,9 +205,7 @@ class TodoListDetailScreen extends ConsumerWidget {
             children: [
               Text(
                 'Colour',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
+                style: Theme.of(context).textTheme.titleMedium
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 16),
@@ -222,11 +230,14 @@ class TodoListDetailScreen extends ConsumerWidget {
                           : current,
                     ),
                     icon: Icons.colorize_outlined,
-                    selected: current != null &&
+                    selected:
+                        current != null &&
                         !kListColors.any((o) => o.value == current),
                     onTap: () async {
-                      final picked =
-                          await showColorPicker(context, initial: current);
+                      final picked = await showColorPicker(
+                        context,
+                        initial: current,
+                      );
                       if (picked != null && context.mounted) {
                         Navigator.of(context)
                             .pop((name: 'Custom', value: picked));
@@ -257,10 +268,9 @@ class TodoListDetailScreen extends ConsumerWidget {
     );
     if (selected == null) return;
 
-    await ref.read(todoRepositoryProvider).updateList(
-          list.id,
-          UpdateTodoList(personId: selected.id),
-        );
+    await ref
+        .read(todoRepositoryProvider)
+        .updateList(list.id, UpdateTodoList(personId: selected.id));
     ref.invalidate(todoListDetailProvider(list.id));
     ref.invalidate(todoListsProvider);
   }
@@ -278,7 +288,9 @@ class TodoListDetailScreen extends ConsumerWidget {
     );
     if (result == null) return;
 
-    await ref.read(todoRepositoryProvider).updateList(
+    await ref
+        .read(todoRepositoryProvider)
+        .updateList(
           listId,
           result.clear
               // Sending nulls would be ignored — clearScheduledTime is the only
@@ -312,8 +324,7 @@ class _ListBody extends ConsumerWidget {
         _ItemSection(
           list: list,
           items: list.items,
-          onReorder: (ordering) =>
-              _reorder(context, ref, ungrouped: ordering),
+          onReorder: (ordering) => _reorder(context, ref, ungrouped: ordering),
         ),
 
         for (final group in list.groups) ...[
@@ -348,8 +359,10 @@ class _ListBody extends ConsumerWidget {
     List<int>? ungrouped,
     Map<int, List<int>> groupOrderings = const {},
   }) async {
-    final ordering =
-        list.reorderPayload(ungrouped: ungrouped, groups: groupOrderings);
+    final ordering = list.reorderPayload(
+      ungrouped: ungrouped,
+      groups: groupOrderings,
+    );
 
     try {
       await ref.read(todoRepositoryProvider).reorderItems(list.id, ordering);
@@ -373,7 +386,8 @@ class _Attributes extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final hasAny = list.scheduledTime != null ||
+    final hasAny =
+        list.scheduledTime != null ||
         list.personName != null ||
         list.labels.isNotEmpty;
     if (!hasAny) return const SizedBox(height: 8);
@@ -393,7 +407,8 @@ class _Attributes extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: parseHexColor(label.color) ??
+                color:
+                    parseHexColor(label.color) ??
                     scheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(6),
               ),
@@ -574,6 +589,7 @@ class _ItemSectionState extends ConsumerState<_ItemSection> {
         item: _items[index],
         index: index,
         inGroup: widget.inGroup,
+        groups: widget.list.groups,
       ),
       // `onReorderItem` hands over a newIndex already adjusted for the removal,
       // unlike the deprecated `onReorder`.
@@ -596,12 +612,16 @@ class _ItemRow extends ConsumerWidget {
     required this.item,
     required this.index,
     this.inGroup = false,
+    this.groups = const [],
   });
 
   final int listId;
   final TodoItem item;
   final int index;
   final bool inGroup;
+
+  /// The list's groups, for **Move to group…**. Empty hides that action.
+  final List<TodoItemGroup> groups;
 
   /// Long-press menu. Used to go straight to the text prompt; the picture
   /// actions needed somewhere to live and a second gesture would have been
@@ -610,41 +630,51 @@ class _ItemRow extends ConsumerWidget {
     final action = await showModalBottomSheet<_ItemAction>(
       context: context,
       showDragHandle: true,
+      // Scrollable: with the picture and group actions the sheet can outgrow a
+      // short screen's modal-sheet allowance rather than just a long one's.
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(
-                item.content,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: const Icon(Icons.edit_outlined),
-              title: const Text('Edit text'),
-              onTap: () => Navigator.pop(context, _ItemAction.edit),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Take photo'),
-              onTap: () => Navigator.pop(context, _ItemAction.takePhoto),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Choose from gallery'),
-              onTap: () => Navigator.pop(context, _ItemAction.choosePhoto),
-            ),
-            if (item.imageUrl != null)
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               ListTile(
-                leading: const Icon(Icons.hide_image_outlined),
-                title: const Text('Remove photo'),
-                onTap: () => Navigator.pop(context, _ItemAction.removePhoto),
+                title: Text(
+                  item.content,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
-          ],
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Edit item…'),
+                onTap: () => Navigator.pop(context, _ItemAction.edit),
+              ),
+              if (groups.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.drive_file_move_outline),
+                  title: const Text('Move to group…'),
+                  onTap: () => Navigator.pop(context, _ItemAction.moveToGroup),
+                ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Take photo'),
+                onTap: () => Navigator.pop(context, _ItemAction.takePhoto),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose from gallery'),
+                onTap: () => Navigator.pop(context, _ItemAction.choosePhoto),
+              ),
+              if (item.imageUrl != null)
+                ListTile(
+                  leading: const Icon(Icons.hide_image_outlined),
+                  title: const Text('Remove photo'),
+                  onTap: () => Navigator.pop(context, _ItemAction.removePhoto),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -652,7 +682,9 @@ class _ItemRow extends ConsumerWidget {
 
     switch (action) {
       case _ItemAction.edit:
-        await _editText(context, ref);
+        await _editItem(context, ref);
+      case _ItemAction.moveToGroup:
+        await _moveToGroup(context, ref);
       case _ItemAction.takePhoto:
         await _setPhoto(context, ref, ImageSource.camera);
       case _ItemAction.choosePhoto:
@@ -662,13 +694,70 @@ class _ItemRow extends ConsumerWidget {
     }
   }
 
-  Future<void> _editText(BuildContext context, WidgetRef ref) async {
-    final content = await promptForText(context, 'Edit item', item.content);
-    if (content == null) return;
+  Future<void> _editItem(BuildContext context, WidgetRef ref) async {
+    final entered = await promptForItem(
+      context,
+      'Edit item',
+      content: item.content,
+      location: item.location,
+    );
+    if (entered == null) return;
+
+    // An emptied location has to be sent as "" to clear it; leaving it out
+    // would keep the old value (the API ignores null).
+    final cleared = entered.location == null && item.location != null;
     await ref
         .read(todoRepositoryProvider)
-        .updateItem(item.id, UpdateTodoItem(content: content));
+        .updateItem(
+          item.id,
+          UpdateTodoItem(
+            content: entered.content,
+            location: entered.location,
+            clearLocation: cleared,
+          ),
+        );
     ref.invalidate(todoListDetailProvider(listId));
+    ref.invalidate(todoListsProvider);
+  }
+
+  /// Picks a group (or none) and moves the item there. The web editor does this
+  /// by dragging between sections; on a phone a picker is the honest version.
+  Future<void> _moveToGroup(BuildContext context, WidgetRef ref) async {
+    // 0 is the API's own "no group" sentinel, so it doubles as the dialog's.
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Move to group'),
+        children: [
+          for (final option in [
+            (id: 0, name: '(No group)'),
+            for (final group in groups) (id: group.id, name: group.name),
+          ])
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, option.id),
+              child: Row(
+                children: [
+                  Expanded(child: Text(option.name)),
+                  if (option.id == (item.groupId ?? 0))
+                    const Icon(Icons.check, size: 18),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked == null || picked == (item.groupId ?? 0)) return;
+
+    await ref
+        .read(todoRepositoryProvider)
+        .updateItem(
+          item.id,
+          picked == 0
+              ? const UpdateTodoItem(removeFromGroup: true)
+              : UpdateTodoItem(groupId: picked),
+        );
+    ref.invalidate(todoListDetailProvider(listId));
+    ref.invalidate(todoListsProvider);
   }
 
   Future<void> _setPhoto(
@@ -696,11 +785,9 @@ class _ItemRow extends ConsumerWidget {
     await _runImageWrite(
       context,
       ref,
-      () => ref.read(todoRepositoryProvider).setItemImage(
-            item.id,
-            filePath: picked.path,
-            fileName: picked.name,
-          ),
+      () => ref
+          .read(todoRepositoryProvider)
+          .setItemImage(item.id, filePath: picked.path, fileName: picked.name),
     );
   }
 
@@ -795,16 +882,33 @@ class _ItemRow extends ConsumerWidget {
               const SizedBox(width: 10),
               TodoItemThumbnail(item: item),
               Expanded(
-                child: Text(
-                  item.content,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: item.isCompleted
-                        ? scheme.onSurfaceVariant
-                        : scheme.onSurface,
-                    decoration:
-                        item.isCompleted ? TextDecoration.lineThrough : null,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.content,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: item.isCompleted
+                            ? scheme.onSurfaceVariant
+                            : scheme.onSurface,
+                        decoration: item.isCompleted
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
+                    ),
+                    // Where to find it. Not struck through when done - it is
+                    // a fact about the shop, not about the task.
+                    if (item.location != null)
+                      Text(
+                        item.location!,
+                        key: ValueKey('item-location-${item.id}'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
                 ),
               ),
               // Indent is capped at 2, and the first item cannot be indented.
@@ -898,10 +1002,10 @@ class _ColorSwatch extends StatelessWidget {
                     color: scheme.onSurfaceVariant,
                   )
                 : icon == null
-                    ? null
-                    // A custom swatch showing its colour still needs the glyph,
-                    // or it is indistinguishable from a preset.
-                    : Icon(icon, size: 18, color: onColor(color)),
+                ? null
+                // A custom swatch showing its colour still needs the glyph,
+                // or it is indistinguishable from a preset.
+                : Icon(icon, size: 18, color: onColor(color)),
           ),
         ),
         const SizedBox(height: 4),
@@ -950,17 +1054,13 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
         children: [
           Text(
             'Schedule',
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
+            style: Theme.of(context).textTheme.titleMedium
                 ?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 16),
           OutlinedButton.icon(
             icon: const Icon(Icons.schedule),
-            label: Text(
-              _time == null ? 'Pick a time' : _time!.format(context),
-            ),
+            label: Text(_time == null ? 'Pick a time' : _time!.format(context)),
             onPressed: () async {
               final picked = await showTimePicker(
                 context: context,
@@ -999,8 +1099,9 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => Navigator.of(context)
-                      .pop(const _ScheduleResult(clear: true)),
+                  onPressed: () =>
+                      Navigator.of(context)
+                          .pop(const _ScheduleResult(clear: true)),
                   child: const Text('Clear'),
                 ),
               ),
@@ -1010,13 +1111,13 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                   onPressed: _time == null
                       ? null
                       : () => Navigator.of(context).pop(
-                            _ScheduleResult(
-                              time: ApiDate.formatMinutesOfDay(
-                                _time!.hour * 60 + _time!.minute,
-                              ),
-                              days: ApiDate.formatScheduledDays(_days) ?? '',
+                          _ScheduleResult(
+                            time: ApiDate.formatMinutesOfDay(
+                              _time!.hour * 60 + _time!.minute,
                             ),
+                            days: ApiDate.formatScheduledDays(_days) ?? '',
                           ),
+                        ),
                   child: const Text('Save'),
                 ),
               ),
@@ -1028,20 +1129,136 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
   }
 }
 
+/// The add / edit item dialog: the text plus an optional location. Returns null
+/// on cancel or when the text is blank; a blank location comes back as null so
+/// callers can tell "cleared" from "unchanged" against the item they hold.
+Future<({String content, String? location})?> promptForItem(
+  BuildContext context,
+  String title, {
+  String content = '',
+  String? location,
+}) async {
+  final result = await showDialog<({String content, String? location})>(
+    context: context,
+    builder: (_) =>
+        _ItemPromptDialog(title: title, content: content, location: location),
+  );
+  return (result == null || result.content.isEmpty) ? null : result;
+}
+
+/// Stateful so the controllers outlive the pop: a dialog keeps building while
+/// it animates out, and a controller disposed the moment `showDialog` returns
+/// is exactly what that last frame reads.
+class _ItemPromptDialog extends StatefulWidget {
+  const _ItemPromptDialog({
+    required this.title,
+    required this.content,
+    required this.location,
+  });
+
+  final String title;
+  final String content;
+  final String? location;
+
+  @override
+  State<_ItemPromptDialog> createState() => _ItemPromptDialogState();
+}
+
+class _ItemPromptDialogState extends State<_ItemPromptDialog> {
+  late final _content = TextEditingController(text: widget.content);
+  late final _location = TextEditingController(text: widget.location ?? '');
+
+  @override
+  void dispose() {
+    _content.dispose();
+    _location.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final where = _location.text.trim();
+    Navigator.of(context).pop((
+      content: _content.text.trim(),
+      location: where.isEmpty ? null : where,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _content,
+            autofocus: true,
+            minLines: 1,
+            maxLines: 4,
+            decoration: const InputDecoration(labelText: 'Item'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _location,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'Location (optional)',
+              hintText: 'Aisle 7, Bakery…',
+            ),
+            onSubmitted: (_) => _save(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Save')),
+      ],
+    );
+  }
+}
+
 /// A one-field text dialog, returning the trimmed value or null.
 Future<String?> promptForText(
   BuildContext context,
   String title,
   String initial,
 ) async {
-  final controller = TextEditingController(text: initial);
-
   final result = await showDialog<String>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text(title),
+    builder: (_) => _TextPromptDialog(title: title, initial: initial),
+  );
+  return (result == null || result.isEmpty) ? null : result;
+}
+
+/// Stateful for the same reason as [_ItemPromptDialog].
+class _TextPromptDialog extends StatefulWidget {
+  const _TextPromptDialog({required this.title, required this.initial});
+
+  final String title;
+  final String initial;
+
+  @override
+  State<_TextPromptDialog> createState() => _TextPromptDialogState();
+}
+
+class _TextPromptDialogState extends State<_TextPromptDialog> {
+  late final _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
       content: TextField(
-        controller: controller,
+        controller: _controller,
         autofocus: true,
         minLines: 1,
         maxLines: 4,
@@ -1052,19 +1269,16 @@ Future<String?> promptForText(
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
           child: const Text('Save'),
         ),
       ],
-    ),
-  );
-
-  controller.dispose();
-  return (result == null || result.isEmpty) ? null : result;
+    );
+  }
 }
 
 void _toast(BuildContext context, String message) =>
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
 
-enum _ItemAction { edit, takePhoto, choosePhoto, removePhoto }
+enum _ItemAction { edit, moveToGroup, takePhoto, choosePhoto, removePhoto }

@@ -15,6 +15,7 @@ _TodoItem _$TodoItemFromJson(Map<String, dynamic> json) => _TodoItem(
   displayOrder: (json['displayOrder'] as num?)?.toInt() ?? 0,
   indentLevel: (json['indentLevel'] as num?)?.toInt() ?? 0,
   imageUrl: json['imageUrl'] as String?,
+  location: json['location'] as String?,
   createdAt: const UtcStamp().fromJson(json['createdAt'] as String?),
   completedAt: const UtcStamp().fromJson(json['completedAt'] as String?),
 );
@@ -28,6 +29,7 @@ Map<String, dynamic> _$TodoItemToJson(_TodoItem instance) => <String, dynamic>{
   'displayOrder': instance.displayOrder,
   'indentLevel': instance.indentLevel,
   'imageUrl': instance.imageUrl,
+  'location': instance.location,
   'createdAt': const UtcStamp().toJson(instance.createdAt),
   'completedAt': const UtcStamp().toJson(instance.completedAt),
 };
@@ -177,6 +179,7 @@ _CreateTodoItem _$CreateTodoItemFromJson(Map<String, dynamic> json) =>
       content: json['content'] as String,
       indentLevel: (json['indentLevel'] as num?)?.toInt() ?? 0,
       groupId: (json['groupId'] as num?)?.toInt(),
+      location: json['location'] as String?,
     );
 
 Map<String, dynamic> _$CreateTodoItemToJson(_CreateTodoItem instance) =>
@@ -184,4 +187,5 @@ Map<String, dynamic> _$CreateTodoItemToJson(_CreateTodoItem instance) =>
       'content': instance.content,
       'indentLevel': instance.indentLevel,
       'groupId': instance.groupId,
+      'location': instance.location,
     };

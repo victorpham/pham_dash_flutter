@@ -26,6 +26,11 @@ abstract class TodoItem with _$TodoItem {
     /// `AppConfig.mediaUrl`. Set and cleared through the dedicated image
     /// endpoints - `UpdateTodoItem` cannot touch it.
     String? imageUrl,
+
+    /// Where to find it in the shop - "Aisle 7", "Bakery". Free text, null when
+    /// unset; the server never returns `""`. Cleared with `""` on the wire - see
+    /// `UpdateTodoItem.clearLocation`.
+    String? location,
     @UtcStamp() DateTime? createdAt,
     @UtcStamp() DateTime? completedAt,
   }) = _TodoItem;
@@ -193,6 +198,7 @@ abstract class CreateTodoItem with _$CreateTodoItem {
     required String content,
     @JsonKey(defaultValue: 0) int? indentLevel,
     int? groupId,
+    String? location,
   }) = _CreateTodoItem;
 
   factory CreateTodoItem.fromJson(Map<String, dynamic> json) =>
@@ -271,7 +277,9 @@ class UpdateTodoList {
 /// `groupId` carries a third state the other fields do not: `null` means "leave
 /// the grouping alone", while **`0` means "remove this item from its group"**.
 /// There is no other way to un-group an item, so it is expressed here as an
-/// explicit intent rather than a magic number at the call site.
+/// explicit intent rather than a magic number at the call site. `location` has
+/// the same shape - null is "leave it", the empty string clears - and gets the
+/// same treatment through [clearLocation].
 class UpdateTodoItem {
   const UpdateTodoItem({
     this.content,
@@ -280,6 +288,8 @@ class UpdateTodoItem {
     this.indentLevel,
     this.groupId,
     this.removeFromGroup = false,
+    this.location,
+    this.clearLocation = false,
   });
 
   final String? content;
@@ -295,6 +305,12 @@ class UpdateTodoItem {
   /// Sends the sentinel `groupId: 0`, which un-groups the item.
   final bool removeFromGroup;
 
+  /// New location text. Ignored when [clearLocation] is set.
+  final String? location;
+
+  /// Sends `location: ""`, which the server stores as null.
+  final bool clearLocation;
+
   Map<String, dynamic> toJson() => {
         if (content != null) 'content': content,
         if (isCompleted != null) 'isCompleted': isCompleted,
@@ -304,5 +320,9 @@ class UpdateTodoItem {
           'groupId': 0
         else if (groupId != null)
           'groupId': groupId,
+        if (clearLocation)
+          'location': ''
+        else if (location != null)
+          'location': location,
       };
 }

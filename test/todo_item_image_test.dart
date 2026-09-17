@@ -19,6 +19,7 @@ const _milk = TodoItem(
   indentLevel: 0,
   // Signed, the way the API hands it out. The query string is the credential.
   imageUrl: '/uploads/todo-items/1_20260915_ab.jpg?exp=1&sig=a',
+  location: 'Aisle 3',
 );
 
 const _eggs = TodoItem(
@@ -30,6 +31,24 @@ const _eggs = TodoItem(
   indentLevel: 0,
 );
 
+const _bread = TodoItem(
+  id: 3,
+  todoListId: 10,
+  groupId: 5,
+  content: 'Bread',
+  isCompleted: false,
+  displayOrder: 2,
+  indentLevel: 0,
+);
+
+const _bakery = TodoItemGroup(
+  id: 5,
+  todoListId: 10,
+  name: 'Bakery',
+  displayOrder: 0,
+  items: [_bread],
+);
+
 const _groceries = TodoList(
   id: 10,
   title: 'Groceries',
@@ -37,9 +56,9 @@ const _groceries = TodoList(
   isArchived: false,
   displayOrder: 0,
   items: [_milk, _eggs],
-  groups: [],
+  groups: [_bakery],
   labels: [],
-  totalItems: 2,
+  totalItems: 3,
   completedItems: 0,
 );
 
@@ -49,12 +68,32 @@ class _FakeTodos extends TodoRepository {
   _FakeTodos(super.api);
 
   final removed = <int>[];
+  final updates = <(int, Map<String, dynamic>)>[];
+  final added = <({String content, String? location})>[];
 
   @override
   Future<TodoList?> list(int id) async => _groceries;
 
   @override
   Future<void> removeItemImage(int itemId) async => removed.add(itemId);
+
+  @override
+  Future<TodoItem?> addItem(
+    int listId, {
+    required String content,
+    int? indentLevel,
+    int? groupId,
+    String? location,
+  }) async {
+    added.add((content: content, location: location));
+    return null;
+  }
+
+  @override
+  Future<TodoItem?> updateItem(int itemId, UpdateTodoItem body) async {
+    updates.add((itemId, body.toJson()));
+    return null;
+  }
 }
 
 Future<_FakeTodos> _pump(WidgetTester tester) async {
@@ -75,6 +114,7 @@ Future<_FakeTodos> _pump(WidgetTester tester) async {
 
 void main() {
   _viewerTests();
+  _locationAndGroupTests();
 
   // CachedNetworkImage never gets to fetch anything under test, so the
   // assertions are on the thumbnail's wrapper key rather than on pixels.
@@ -92,7 +132,7 @@ void main() {
 
     await tester.longPress(find.text('Eggs'));
     await tester.pumpAndSettle();
-    expect(find.text('Edit text'), findsOneWidget);
+    expect(find.text('Edit item…'), findsOneWidget);
     expect(find.text('Take photo'), findsOneWidget);
     expect(find.text('Choose from gallery'), findsOneWidget);
     expect(find.text('Remove photo'), findsNothing);
@@ -111,6 +151,8 @@ void main() {
 
     await tester.longPress(find.text('Milk'));
     await tester.pumpAndSettle();
+    // Last entry on a sheet that now scrolls on a short screen.
+    await tester.ensureVisible(find.text('Remove photo'));
     await tester.tap(find.text('Remove photo'));
     await tester.pumpAndSettle();
 
@@ -170,5 +212,86 @@ void _viewerTests() {
     await tester.pump(const Duration(seconds: 1));
 
     expect(find.byType(TodoItemImageViewer), findsOneWidget);
+  });
+}
+
+void _locationAndGroupTests() {
+  testWidgets('an item with a location shows it under the text',
+      (tester) async {
+    await _pump(tester);
+
+    expect(find.byKey(const ValueKey('item-location-1')), findsOneWidget);
+    expect(find.text('Aisle 3'), findsOneWidget);
+    expect(find.byKey(const ValueKey('item-location-2')), findsNothing);
+  });
+
+  testWidgets('Edit item… opens both fields prefilled and clears with ""',
+      (tester) async {
+    final todos = await _pump(tester);
+
+    await tester.longPress(find.text('Milk'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit item…'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'Milk'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Aisle 3'), findsOneWidget);
+
+    // Emptying the location must reach the API as "", not be dropped.
+    await tester.enterText(find.widgetWithText(TextField, 'Aisle 3'), '');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(todos.updates.single.$1, 1);
+    expect(todos.updates.single.$2, {'content': 'Milk', 'location': ''});
+  });
+
+  testWidgets('Add item sends the location only when one was typed',
+      (tester) async {
+    final todos = await _pump(tester);
+
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Item'), 'Butter');
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Location (optional)'),
+      '  Dairy ',
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(todos.added, [(content: 'Butter', location: 'Dairy')]);
+  });
+
+  testWidgets('Move to group… offers the groups and sends the chosen id',
+      (tester) async {
+    final todos = await _pump(tester);
+
+    await tester.longPress(find.text('Eggs'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move to group…'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('(No group)'), findsOneWidget);
+    await tester.tap(find.widgetWithText(SimpleDialogOption, 'Bakery'));
+    await tester.pumpAndSettle();
+
+    expect(todos.updates.single.$1, 2);
+    expect(todos.updates.single.$2, {'groupId': 5});
+  });
+
+  testWidgets('Move to group… on a grouped item can send it back to no group',
+      (tester) async {
+    final todos = await _pump(tester);
+
+    await tester.longPress(find.text('Bread'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move to group…'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('(No group)'));
+    await tester.pumpAndSettle();
+
+    expect(todos.updates.single.$1, 3);
+    expect(todos.updates.single.$2, {'groupId': 0});
   });
 }
