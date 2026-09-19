@@ -6,10 +6,18 @@
          HTTPS, and the debug manifest keeps its own exemption for the local
          dev server. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Backup is off because the app keeps a copy of the family directory,
+         birthdays, notes and lists in SharedPreferences so it opens instantly
+         while the database wakes (lib/core/cache). Android's auto-backup would
+         otherwise ship that file to the user's Google Drive. Tokens live in
+         flutter_secure_storage and were never backed up. The cost of "false"
+         is signing in again after a phone restore, after which the cache
+         refills itself. -->
     <application
         android:label="PhamDash"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false">
         <!-- The Flutter template ships android:taskAffinity="" on this activity
              as a task-hijacking mitigation. It must stay off: AppAuth's
              AuthorizationManagementActivity is singleTask and declares no

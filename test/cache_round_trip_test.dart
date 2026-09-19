@@ -34,6 +34,25 @@ void main() {
     expect(roundTrip([tag], (t) => t.toJson(), PersonTag.fromJson), [tag]);
   });
 
+  test('upcoming birthdays keep their wall-clock birth date', () {
+    final birthday = UpcomingBirthday(
+      id: 'p1',
+      firstName: 'Tu',
+      lastName: 'Pham',
+      birthDate: DateTime(1990, 6, 15),
+      profilePictureUrl: '/uploads/p1.jpg?exp=1&sig=abc',
+      daysUntilBirthday: 3,
+      upcomingAge: 36,
+    );
+    final back = roundTrip(
+      [birthday],
+      (b) => b.toJson(),
+      UpcomingBirthday.fromJson,
+    );
+    expect(back, [birthday]);
+    expect(back.single.birthDate, DateTime(1990, 6, 15));
+  });
+
   test('recent notes, with their embedded author', () {
     final note = Note(
       noteId: 7,

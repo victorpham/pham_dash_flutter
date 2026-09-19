@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api/api_exception.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
@@ -85,10 +86,10 @@ class CreateListButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => FloatingActionButton(
-        tooltip: 'New list',
-        onPressed: () => _createList(context, ref),
-        child: const Icon(Icons.add),
-      );
+    tooltip: 'New list',
+    onPressed: () => _createList(context, ref),
+    child: const Icon(Icons.add),
+  );
 
   Future<void> _createList(BuildContext context, WidgetRef ref) async {
     final controller = TextEditingController();
@@ -170,9 +171,10 @@ class TodoLabelFilterBar extends ConsumerWidget implements PreferredSizeWidget {
                   parseHexColor(label.color),
                   selected: selected == label.id,
                 ),
-                onSelected: (isSelected) => ref
-                    .read(labelFilterProvider.notifier)
-                    .value = isSelected ? label.id : null,
+                onSelected: (isSelected) =>
+                    ref.read(labelFilterProvider.notifier).value = isSelected
+                    ? label.id
+                    : null,
               ),
             ),
         ],
@@ -188,16 +190,16 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
-        child: Text(
-          text.toUpperCase(),
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.8,
-              ),
-        ),
-      );
+    padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
+    child: Text(
+      text.toUpperCase(),
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.8,
+      ),
+    ),
+  );
 }
 
 class TodoListCard extends ConsumerWidget {
@@ -209,8 +211,9 @@ class TodoListCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final stripe = parseHexColor(list.color);
-    final progress =
-        list.totalItems == 0 ? 0.0 : list.completedItems / list.totalItems;
+    final progress = list.totalItems == 0
+        ? 0.0
+        : list.completedItems / list.totalItems;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -259,12 +262,19 @@ class TodoListCard extends ConsumerWidget {
                               size: 18,
                               color: list.isPinned ? scheme.primary : null,
                             ),
-                            // Pin is a server-side toggle, not a setter.
+                            // Pin is a server-side toggle, not a setter;
+                            // the notifier flips it optimistically.
                             onPressed: () async {
-                              await ref
-                                  .read(todoRepositoryProvider)
-                                  .togglePin(list.id);
-                              ref.invalidate(todoListsProvider);
+                              try {
+                                await ref
+                                    .read(todoListsProvider.notifier)
+                                    .togglePin(list.id);
+                              } on ApiException catch (error) {
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(error.message)),
+                                );
+                              }
                             },
                           ),
                         ],
@@ -337,7 +347,8 @@ class TodoListCard extends ConsumerWidget {
                                   vertical: 2,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: parseHexColor(label.color) ??
+                                  color:
+                                      parseHexColor(label.color) ??
                                       scheme.surfaceContainerHighest,
                                   borderRadius: BorderRadius.circular(5),
                                 ),

@@ -29,6 +29,7 @@ class AsyncView<T> extends StatelessWidget {
     this.emptyIcon = Icons.inbox_outlined,
     this.loading,
     this.explainSlowLoad = true,
+    this.fallback,
   });
 
   final AsyncValue<T> value;
@@ -50,6 +51,15 @@ class AsyncView<T> extends StatelessWidget {
   /// reaches the API.
   final bool explainSlowLoad;
 
+  /// Something to show while [value] has no value of its own - typically the
+  /// same record as it sits in a sibling `CachedList` provider (a todo list
+  /// from the lists cache, a person from the directory). Rendered exactly as
+  /// a cached seed would be: under the [RefreshingStrip] while loading, under
+  /// the [RefreshFailedBanner] when the fetch failed. Ignored once [value]
+  /// carries data. This is the public-API route to "loading with a value";
+  /// `AsyncValue.copyWithPrevious` is `@internal` in Riverpod 3.
+  final T? fallback;
+
   bool _isEmpty(T data) {
     final predicate = isEmpty;
     if (predicate != null) return predicate(data);
@@ -59,55 +69,66 @@ class AsyncView<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fallback = this.fallback;
+    if (fallback != null && !value.hasValue) {
+      final content = _content(fallback);
+      final error = value.error;
+      if (error != null) return _withBanner(content, error);
+      return _withStrip(content);
+    }
+
     return value.when(
       skipLoadingOnRefresh: true,
       skipLoadingOnReload: true,
       skipError: true,
-      loading: () => loading ?? PatientLoading(explainSlowLoad: explainSlowLoad),
+      loading: () =>
+          loading ?? PatientLoading(explainSlowLoad: explainSlowLoad),
       error: (error, _) => ErrorStateView(error: error, onRetry: onRetry),
       data: (data) {
-        final content = _isEmpty(data)
-            ? EmptyStateView(
-                icon: emptyIcon,
-                title: emptyTitle,
-                message: emptyMessage,
-              )
-            : builder(data);
+        final content = _content(data);
 
         // `skipError` above is what keeps `content` when a refresh fails; the
         // banner is what keeps that honest.
         final error = value.error;
-        if (error != null) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              RefreshFailedBanner(error: error, onRetry: onRetry),
-              Flexible(child: content),
-            ],
-          );
-        }
+        if (error != null) return _withBanner(content, error);
 
         // A reload with a value is either a `CachedList` seed or a dependency
         // change (a todo filter). Refreshes - a pull, or an invalidate after
         // a write - stay silent as before; the pull has its own indicator.
-        if (value.isReloading) {
-          return Stack(
-            children: [
-              content,
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: RefreshingStrip(explainSlowLoad: explainSlowLoad),
-              ),
-            ],
-          );
-        }
+        if (value.isReloading) return _withStrip(content);
 
         return content;
       },
     );
   }
+
+  Widget _content(T data) => _isEmpty(data)
+      ? EmptyStateView(
+          icon: emptyIcon,
+          title: emptyTitle,
+          message: emptyMessage,
+        )
+      : builder(data);
+
+  Widget _withBanner(Widget content, Object error) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      RefreshFailedBanner(error: error, onRetry: onRetry),
+      Flexible(child: content),
+    ],
+  );
+
+  Widget _withStrip(Widget content) => Stack(
+    children: [
+      content,
+      Positioned(
+        top: 0,
+        left: 0,
+        right: 0,
+        child: RefreshingStrip(explainSlowLoad: explainSlowLoad),
+      ),
+    ],
+  );
 }
 
 /// The 2px bar over a list that is showing while its refresh runs, growing a
@@ -131,7 +152,10 @@ class RefreshingStrip extends StatelessWidget {
             child: Material(
               color: theme.colorScheme.surfaceContainerHigh,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
                 child: Row(
                   children: [
                     Icon(
@@ -179,13 +203,15 @@ class RefreshFailedBanner extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: scheme.onErrorContainer),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onErrorContainer,
+                    ),
                   ),
                   Text(
                     userMessageFor(error),
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: scheme.onErrorContainer),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onErrorContainer,
+                    ),
                   ),
                 ],
               ),

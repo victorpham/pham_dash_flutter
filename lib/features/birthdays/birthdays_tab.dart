@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/cache/cached_list.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
@@ -11,10 +12,27 @@ import '../../data/models/people_models.dart';
 
 /// Computed server-side across everyone with a birth date, ordered by days
 /// until, so no client-side date maths is needed.
-final upcomingBirthdaysProvider =
-    FutureProvider.autoDispose<List<UpcomingBirthday>>(
-  (ref) => ref.watch(peopleRepositoryProvider).upcomingBirthdays(count: 8),
+///
+/// Cached like the other first-screen tabs. `daysUntilBirthday` is a snapshot
+/// and drifts by a day per day the copy sits unused, but the fetch that
+/// replaces it starts at once - and a day-old "in 3 days" beats a spinner.
+final upcomingBirthdaysProvider = AsyncNotifierProvider.autoDispose<
+    UpcomingBirthdaysNotifier, List<UpcomingBirthday>>(
+  UpcomingBirthdaysNotifier.new,
 );
+
+class UpcomingBirthdaysNotifier extends AsyncNotifier<List<UpcomingBirthday>>
+    with CachedList<UpcomingBirthday> {
+  @override
+  Future<List<UpcomingBirthday>> build() {
+    persistList(
+      'birthdays',
+      fromJson: UpcomingBirthday.fromJson,
+      toJson: (birthday) => birthday.toJson(),
+    );
+    return ref.watch(peopleRepositoryProvider).upcomingBirthdays(count: 8);
+  }
+}
 
 class BirthdaysTab extends ConsumerWidget {
   const BirthdaysTab({super.key});

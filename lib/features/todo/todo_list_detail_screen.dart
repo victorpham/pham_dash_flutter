@@ -15,11 +15,6 @@ import 'todo_item_image.dart';
 import 'todo_labels_sheet.dart';
 import 'todo_providers.dart';
 
-final todoListDetailProvider = FutureProvider.autoDispose
-    .family<TodoList?, int>(
-      (ref, id) => ref.watch(todoRepositoryProvider).list(id),
-    );
-
 /// The list editor.
 ///
 /// Deliberately **not** a port of the web save routine, which recomputes a full
@@ -33,16 +28,27 @@ class TodoListDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(todoListDetailProvider(listId));
-    final stripe = parseHexColor(list.value?.color);
+    // The Lists tab's cache carries every list in full, so a list opened after
+    // a cold launch renders from there while its own fetch waits on the
+    // database - the whole point of a shopping list on a phone.
+    final cached = ref
+        .watch(todoListsProvider)
+        .value
+        ?.where((candidate) => candidate.id == listId)
+        .firstOrNull;
+    final shown = list.value ?? cached;
+    final stripe = parseHexColor(shown?.color);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(list.value?.title ?? 'List'),
+        title: Text(shown?.title ?? 'List'),
         // The list's colour is a wash behind the whole card on the web; an
         // app-bar tint is the closest thing that does not fight the theme.
         backgroundColor: stripe?.withValues(alpha: 0.35),
         actions: [
           if (list.value != null)
+            // Deliberately gated on the real fetch, not [shown]: the actions
+            // write, and a stale copy is not what to rename or delete.
             PopupMenuButton<String>(
               onSelected: (action) => _onAction(context, ref, action),
               itemBuilder: (context) => [
@@ -74,6 +80,7 @@ class TodoListDetailScreen extends ConsumerWidget {
       ),
       body: AsyncView<TodoList?>(
         value: list,
+        fallback: cached,
         onRetry: () => ref.invalidate(todoListDetailProvider(listId)),
         isEmpty: (data) => data == null,
         emptyIcon: Icons.search_off,
@@ -173,20 +180,15 @@ class TodoListDetailScreen extends ConsumerWidget {
     final entered = await promptForItem(context, 'Add item');
     if (entered == null) return;
 
-    try {
-      await ref
-          .read(todoRepositoryProvider)
-          .addItem(
-            listId,
-            content: entered.content,
-            location: entered.location,
-          );
-    } on ApiException catch (error) {
-      if (context.mounted) _toast(context, error.message);
-      return;
-    }
-    ref.invalidate(todoListDetailProvider(listId));
-    ref.invalidate(todoListsProvider);
+    // Optimistic: the placeholder row appears at once - see
+    // TodoListDetailNotifier for why this screen does not wait.
+    if (!context.mounted) return;
+    await _tryWrite(
+      context,
+      () => ref
+          .read(todoListDetailProvider(listId).notifier)
+          .addItem(content: entered.content, location: entered.location),
+    );
   }
 
   Future<({String name, String? value})?> _pickColor(
@@ -623,6 +625,13 @@ class _ItemRow extends ConsumerWidget {
   /// The list's groups, for **Move to group…**. Empty hides that action.
   final List<TodoItemGroup> groups;
 
+  /// An add still in flight: the row is shown but not yet actionable, since
+  /// every action needs the server id it does not have yet.
+  bool get _isPlaceholder => item.id < 0;
+
+  TodoListDetailNotifier _notifier(WidgetRef ref) =>
+      ref.read(todoListDetailProvider(listId).notifier);
+
   /// Long-press menu. Used to go straight to the text prompt; the picture
   /// actions needed somewhere to live and a second gesture would have been
   /// worse than one more tap.
@@ -706,18 +715,18 @@ class _ItemRow extends ConsumerWidget {
     // An emptied location has to be sent as "" to clear it; leaving it out
     // would keep the old value (the API ignores null).
     final cleared = entered.location == null && item.location != null;
-    await ref
-        .read(todoRepositoryProvider)
-        .updateItem(
-          item.id,
-          UpdateTodoItem(
-            content: entered.content,
-            location: entered.location,
-            clearLocation: cleared,
-          ),
-        );
-    ref.invalidate(todoListDetailProvider(listId));
-    ref.invalidate(todoListsProvider);
+    if (!context.mounted) return;
+    await _tryWrite(
+      context,
+      () => _notifier(ref).updateItem(
+        item.id,
+        UpdateTodoItem(
+          content: entered.content,
+          location: entered.location,
+          clearLocation: cleared,
+        ),
+      ),
+    );
   }
 
   /// Picks a group (or none) and moves the item there. The web editor does this
@@ -747,17 +756,17 @@ class _ItemRow extends ConsumerWidget {
       ),
     );
     if (picked == null || picked == (item.groupId ?? 0)) return;
+    if (!context.mounted) return;
 
-    await ref
-        .read(todoRepositoryProvider)
-        .updateItem(
-          item.id,
-          picked == 0
-              ? const UpdateTodoItem(removeFromGroup: true)
-              : UpdateTodoItem(groupId: picked),
-        );
-    ref.invalidate(todoListDetailProvider(listId));
-    ref.invalidate(todoListsProvider);
+    await _tryWrite(
+      context,
+      () => _notifier(ref).updateItem(
+        item.id,
+        picked == 0
+            ? const UpdateTodoItem(removeFromGroup: true)
+            : UpdateTodoItem(groupId: picked),
+      ),
+    );
   }
 
   Future<void> _setPhoto(
@@ -840,29 +849,26 @@ class _ItemRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final repository = ref.read(todoRepositoryProvider);
+    final notifier = _notifier(ref);
 
     return Dismissible(
       key: ValueKey('dismiss-${item.id}'),
-      direction: DismissDirection.endToStart,
+      direction: _isPlaceholder
+          ? DismissDirection.none
+          : DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
         color: scheme.errorContainer,
         padding: const EdgeInsets.only(right: 20),
         child: Icon(Icons.delete_outline, color: scheme.onErrorContainer),
       ),
-      onDismissed: (_) async {
-        await repository.deleteItem(item.id);
-        ref.invalidate(todoListDetailProvider(listId));
-        ref.invalidate(todoListsProvider);
-      },
+      onDismissed: (_) =>
+          _tryWrite(context, () => notifier.deleteItem(item.id)),
       child: InkWell(
-        onTap: () async {
-          await repository.toggleItem(item.id);
-          ref.invalidate(todoListDetailProvider(listId));
-          ref.invalidate(todoListsProvider);
-        },
-        onLongPress: () => _showActions(context, ref),
+        onTap: _isPlaceholder
+            ? null
+            : () => _tryWrite(context, () => notifier.toggle(item.id)),
+        onLongPress: _isPlaceholder ? null : () => _showActions(context, ref),
         child: Padding(
           padding: EdgeInsets.fromLTRB(
             16 + item.indentLevel * 18.0 + (inGroup ? 12 : 0),
@@ -912,31 +918,31 @@ class _ItemRow extends ConsumerWidget {
                 ),
               ),
               // Indent is capped at 2, and the first item cannot be indented.
-              if (item.indentLevel < 2 && index > 0)
+              if (!_isPlaceholder && item.indentLevel < 2 && index > 0)
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   tooltip: 'Indent',
                   icon: const Icon(Icons.format_indent_increase, size: 18),
-                  onPressed: () async {
-                    await repository.updateItem(
+                  onPressed: () => _tryWrite(
+                    context,
+                    () => notifier.updateItem(
                       item.id,
                       UpdateTodoItem(indentLevel: item.indentLevel + 1),
-                    );
-                    ref.invalidate(todoListDetailProvider(listId));
-                  },
+                    ),
+                  ),
                 ),
-              if (item.indentLevel > 0)
+              if (!_isPlaceholder && item.indentLevel > 0)
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   tooltip: 'Outdent',
                   icon: const Icon(Icons.format_indent_decrease, size: 18),
-                  onPressed: () async {
-                    await repository.updateItem(
+                  onPressed: () => _tryWrite(
+                    context,
+                    () => notifier.updateItem(
                       item.id,
                       UpdateTodoItem(indentLevel: item.indentLevel - 1),
-                    );
-                    ref.invalidate(todoListDetailProvider(listId));
-                  },
+                    ),
+                  ),
                 ),
               ReorderableDragStartListener(
                 index: index,
@@ -1282,3 +1288,19 @@ void _toast(BuildContext context, String message) =>
         .showSnackBar(SnackBar(content: Text(message)));
 
 enum _ItemAction { edit, moveToGroup, takePhoto, choosePhoto, removePhoto }
+
+/// Runs an optimistic write and says so if it fails. The notifier has already
+/// rolled the list back by the time this catches; the toast is the only part
+/// the user would otherwise not see.
+Future<void> _tryWrite(
+  BuildContext context,
+  Future<void> Function() write,
+) async {
+  try {
+    await write();
+  } on ApiException catch (error) {
+    // NetworkException is an ApiException too, so a timeout during the
+    // database wake lands here with its own wording.
+    if (context.mounted) _toast(context, error.message);
+  }
+}

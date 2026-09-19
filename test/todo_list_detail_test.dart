@@ -1,10 +1,15 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/experimental/persist.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pham_dash_flutter/core/api/api_client.dart';
+import 'package:pham_dash_flutter/core/api/api_exception.dart';
 import 'package:pham_dash_flutter/core/auth/auth_service.dart';
 import 'package:pham_dash_flutter/core/providers.dart';
+import 'package:pham_dash_flutter/core/ui/async_view.dart';
 import 'package:pham_dash_flutter/data/models/todo_models.dart';
 import 'package:pham_dash_flutter/data/repositories/todo_repository.dart';
 import 'package:pham_dash_flutter/features/todo/todo_item_image.dart';
@@ -70,9 +75,60 @@ class _FakeTodos extends TodoRepository {
   final removed = <int>[];
   final updates = <(int, Map<String, dynamic>)>[];
   final added = <({String content, String? location})>[];
+  final toggled = <int>[];
+
+  /// When set, every read and write waits on it - the database asleep.
+  Completer<void>? gate;
+
+  /// When set, item writes fail with it after the gate.
+  Object? failWritesWith;
+
+  Future<void> _wait() async {
+    await gate?.future;
+  }
+
+  Future<void> _write() async {
+    await _wait();
+    final error = failWritesWith;
+    if (error != null) throw error;
+  }
+
+  /// What the server holds. Writes change it, so the re-read that follows
+  /// a successful write sees what a real server would show.
+  TodoList server = _groceries;
+
+  void _replace(TodoItem item) {
+    server = server.copyWith(
+      items: [
+        for (final i in server.items)
+          if (i.id == item.id) item else i,
+      ],
+    );
+  }
 
   @override
-  Future<TodoList?> list(int id) async => _groceries;
+  Future<TodoList?> list(int id) async {
+    await _wait();
+    return server;
+  }
+
+  @override
+  Future<TodoItem?> toggleItem(int itemId) async {
+    await _write();
+    toggled.add(itemId);
+    final item = server.allItems.firstWhere((i) => i.id == itemId);
+    final flipped = item.copyWith(isCompleted: !item.isCompleted);
+    _replace(flipped);
+    return flipped;
+  }
+
+  @override
+  Future<void> deleteItem(int itemId) async {
+    await _write();
+    server = server.copyWith(
+      items: server.items.where((i) => i.id != itemId).toList(),
+    );
+  }
 
   @override
   Future<void> removeItemImage(int itemId) async => removed.add(itemId);
@@ -85,34 +141,72 @@ class _FakeTodos extends TodoRepository {
     int? groupId,
     String? location,
   }) async {
+    await _write();
     added.add((content: content, location: location));
-    return null;
+    final created = TodoItem(
+      id: 100 + added.length,
+      todoListId: listId,
+      content: content,
+      location: location,
+      isCompleted: false,
+      displayOrder: 99,
+      indentLevel: 0,
+    );
+    server = server.copyWith(items: [...server.items, created]);
+    return created;
   }
 
   @override
   Future<TodoItem?> updateItem(int itemId, UpdateTodoItem body) async {
+    await _write();
     updates.add((itemId, body.toJson()));
     return null;
   }
 }
 
-Future<_FakeTodos> _pump(WidgetTester tester) async {
-  final todos = _FakeTodos(ApiClient(AuthService()));
+/// The Lists tab's cache as a previous launch would have left it: the same
+/// list, so the detail screen has something to show before its own fetch.
+Storage<String, String> _seededStore() {
+  final store = Storage<String, String>.inMemory();
+  store.write(
+    'todo_lists',
+    jsonEncode([_groceries.toJson()]),
+    const StorageOptions(),
+  );
+  return store;
+}
+
+Future<_FakeTodos> _pump(
+  WidgetTester tester, {
+  Storage<String, String>? storage,
+  Completer<void>? gate,
+  Object? failWritesWith,
+  bool settle = true,
+}) async {
+  final todos = _FakeTodos(ApiClient(AuthService()))
+    ..gate = gate
+    ..failWritesWith = failWritesWith;
 
   await tester.pumpWidget(
     ProviderScope(
+      retry: (_, _) => null,
       overrides: [
         todoRepositoryProvider.overrideWithValue(todos),
-        cacheStorageProvider.overrideWithValue(Storage.inMemory()),
+        cacheStorageProvider.overrideWithValue(storage ?? Storage.inMemory()),
       ],
       child: const MaterialApp(home: TodoListDetailScreen(listId: 10)),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
   return todos;
 }
 
 void main() {
+  _optimisticTests();
   _viewerTests();
   _locationAndGroupTests();
 
@@ -293,5 +387,115 @@ void _locationAndGroupTests() {
 
     expect(todos.updates.single.$1, 3);
     expect(todos.updates.single.$2, {'groupId': 0});
+  });
+}
+
+/// The point of the notifier: the shopping list works while the database is
+/// asleep. Every read and write here is gated behind a completer that stands
+/// in for the wake, and the assertions are made before it completes.
+void _optimisticTests() {
+  // Nothing in the fixture starts completed, so "a checked row" is "the
+  // checked icon exists".
+  Finder checked(String _) => find.byIcon(Icons.check_circle);
+
+  testWidgets('a list opens from the Lists cache before its own fetch lands',
+      (tester) async {
+    final gate = Completer<void>();
+    await _pump(tester, storage: _seededStore(), gate: gate, settle: false);
+    await tester.pump();
+
+    expect(find.text('Milk'), findsOneWidget);
+    expect(find.text('Groceries'), findsOneWidget);
+    expect(find.byType(RefreshingStrip), findsOneWidget);
+    expect(find.byType(PatientLoading), findsNothing);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(RefreshingStrip), findsNothing);
+  });
+
+  testWidgets('toggling flips the row at once, before the server answers',
+      (tester) async {
+    final gate = Completer<void>();
+    // Cold launch: the detail fetch is still pending when the tap happens, so
+    // the notifier has to work from the cached copy.
+    final todos =
+        await _pump(tester, storage: _seededStore(), gate: gate, settle: false);
+    await tester.pump();
+    expect(checked('Milk'), findsNothing);
+
+    await tester.tap(find.text('Milk'));
+    await tester.pump();
+    // Two frames: the first swaps the screen from the cached fallback to the
+    // patched list, the second settles the rows.
+    await tester.pump();
+
+    expect(checked('Milk'), findsOneWidget);
+    expect(todos.toggled, isEmpty, reason: 'the server has not answered yet');
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(todos.toggled, [1]);
+    expect(checked('Milk'), findsOneWidget);
+  });
+
+  testWidgets('a failed toggle rolls the row back and says so',
+      (tester) async {
+    final gate = Completer<void>();
+    final todos = await _pump(tester);
+    todos.gate = gate;
+
+    await tester.tap(find.text('Milk'));
+    await tester.pump();
+    await tester.pump();
+    expect(checked('Milk'), findsOneWidget);
+
+    // The server answers - with a failure.
+    todos.failWritesWith = const NetworkException('Server asleep');
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(checked('Milk'), findsNothing);
+    expect(find.text('Server asleep'), findsOneWidget);
+  });
+
+  testWidgets("adding shows a placeholder, then the server's item",
+      (tester) async {
+    final gate = Completer<void>();
+    final todos = await _pump(tester);
+    todos.gate = gate;
+
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Item'), 'Butter');
+    await tester.tap(find.text('Save'));
+    // Settles the dialog's exit; the gated write is a future, not an animation.
+    await tester.pumpAndSettle();
+
+    // On screen already, but not actionable: no long-press sheet.
+    expect(find.text('Butter'), findsOneWidget);
+    await tester.longPress(find.text('Butter'));
+    await tester.pump();
+    expect(find.text('Edit item…'), findsNothing);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Butter'), findsOneWidget);
+    await tester.longPress(find.text('Butter'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit item…'), findsOneWidget);
+  });
+
+  testWidgets('deleting removes the row at once', (tester) async {
+    final gate = Completer<void>();
+    final todos = await _pump(tester);
+    todos.gate = gate;
+
+    await tester.drag(find.text('Eggs'), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Eggs'), findsNothing);
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Eggs'), findsNothing);
   });
 }

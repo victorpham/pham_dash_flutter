@@ -102,7 +102,7 @@ touch Dio, and repositories never touch Riverpod.
   meanwhile. `ServerWarmup` pings on app resume and `PatientLoading` explains
   the wait after 5 s. `GET /health` is deliberately dependency-free and wakes
   nothing - the ping is `GET /api/user-preferences`.
-- **The six list providers behind a first screen are cached.** `CachedList`
+- **The seven list providers behind a first screen are cached.** `CachedList`
   (`lib/core/cache/`) uses Riverpod 3's *experimental* `persist` over a
   `SharedPreferences` `Storage`; a cold launch renders the last result under a
   thin bar while the fetch runs. `PreferencesStorage.delete` deliberately keeps
@@ -111,6 +111,12 @@ touch Dio, and repositories never touch Riverpod.
   (banner + Retry) rather than swapping to the error view; sign-out clears the
   cache. Tests override `cacheStorageProvider` with `Storage.inMemory()`, and
   the cached providers are notifiers, so fake them with `overrideWithBuild`.
+  Detail screens are not cached separately: the todo list detail and the
+  person header pass the matching record from the lists / people cache as
+  `AsyncView.fallback`, which renders it like a seed while the real fetch runs
+  (`AsyncValue.copyWithPrevious` is `@internal`, so this is the public route).
+  Android backup is off (`allowBackup="false"`) so the cache never leaves the
+  device.
 - **Preferences are read-only in this client.** `PUT /api/user-preferences` is a
   full replace that nulls omitted fields, so writing from here would wipe the web
   app's theme. Dark mode is stored device-locally in `SharedPreferences`.
@@ -130,6 +136,10 @@ Route every async screen through `AsyncView`, which renders the loading / error 
 empty triad (and `ErrorStateView` knows how to show an `ApiException` message).
 After a write, invalidate rather than patch local state — see `invalidatePerson`,
 which exists because one relationship write fans out into several server-side rows.
+The one exception is `TodoListDetailNotifier` (and `TodoListsNotifier.togglePin`):
+the shopping list is used while the database is asleep, so item writes patch
+state first, splice in the server's answer, and roll back on failure. Route new
+item writes through its methods and `_tryWrite`, not the repository.
 
 ## Tests
 

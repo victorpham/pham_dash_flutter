@@ -67,6 +67,13 @@ class PersonDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final person = ref.watch(personProvider(personId));
+    // The directory cache already holds this person; show them from there
+    // while the fetch waits on the database.
+    final cached = ref
+        .watch(allPeopleProvider)
+        .value
+        ?.where((candidate) => candidate.id == personId)
+        .firstOrNull;
 
     return Scaffold(
       appBar: AppBar(
@@ -92,6 +99,7 @@ class PersonDetailScreen extends ConsumerWidget {
       ),
       body: AsyncView<Person?>(
         value: person,
+        fallback: cached,
         onRetry: () => ref.invalidate(personProvider(personId)),
         isEmpty: (data) => data == null,
         emptyIcon: Icons.person_off_outlined,
