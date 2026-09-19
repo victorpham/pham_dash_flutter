@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/cache/cached_list.dart';
+import '../../core/cache/freshness.dart';
 import '../../core/providers.dart';
+import '../../core/sync/pending_writes.dart';
 import '../../data/models/todo_models.dart';
 import '../../data/repositories/todo_repository.dart';
 
@@ -55,7 +57,9 @@ class TodoListsNotifier extends AsyncNotifier<List<TodoList>>
           list,
     ]);
     try {
-      await ref.read(todoRepositoryProvider).togglePin(listId);
+      await ref
+          .read(pendingWritesProvider.notifier)
+          .track(() => ref.read(todoRepositoryProvider).togglePin(listId));
     } catch (_) {
       state = AsyncData(before);
       rethrow;
@@ -106,8 +110,17 @@ class TodoListDetailNotifier extends AsyncNotifier<TodoList?> {
   /// Negative so it can never collide with a server id.
   static int _nextTempId = -1;
 
+  /// Freshness key for this list's own fetch. The screen falls back to the
+  /// Lists tab's stamp while this provider has no data of its own.
+  String get freshnessKey => 'todo_list:$listId';
+
   @override
-  Future<TodoList?> build() => ref.watch(todoRepositoryProvider).list(listId);
+  Future<TodoList?> build() {
+    listenSelf(
+      (previous, next) => recordFetch(ref, freshnessKey, previous, next),
+    );
+    return ref.watch(todoRepositoryProvider).list(listId);
+  }
 
   TodoRepository get _repository => ref.read(todoRepositoryProvider);
 
@@ -128,7 +141,9 @@ class TodoListDetailNotifier extends AsyncNotifier<TodoList?> {
 
     state = AsyncData(patch(before));
     try {
-      final result = await write();
+      final result = await ref
+          .read(pendingWritesProvider.notifier)
+          .track(write);
       final current = state.value;
       if (settle != null && current != null) {
         state = AsyncData(settle(current, result));

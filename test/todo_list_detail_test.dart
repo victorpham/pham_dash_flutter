@@ -468,8 +468,11 @@ void _optimisticTests() {
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, 'Item'), 'Butter');
     await tester.tap(find.text('Save'));
-    // Settles the dialog's exit; the gated write is a future, not an animation.
-    await tester.pumpAndSettle();
+    // Timed, not settled: the app-bar sync spinner runs while the write is
+    // gated. Enough frames for the dialog to leave.
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
 
     // On screen already, but not actionable: no long-press sheet.
     expect(find.text('Butter'), findsOneWidget);
@@ -491,7 +494,11 @@ void _optimisticTests() {
     todos.gate = gate;
 
     await tester.drag(find.text('Eggs'), const Offset(-600, 0));
-    await tester.pumpAndSettle();
+    // The dismiss animates, then onDismissed patches the list: a few frames,
+    // pumped by hand because the sync spinner keeps pumpAndSettle waiting.
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
 
     expect(find.text('Eggs'), findsNothing);
     gate.complete();

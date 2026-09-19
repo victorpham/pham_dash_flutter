@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api/api_exception.dart';
+import '../../core/cache/freshness.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
@@ -210,6 +211,7 @@ class PeopleScreen extends ConsumerWidget {
         onRefresh: () => ref.refresh(allPeopleProvider.future),
         child: AsyncView<List<Person>>(
           value: people,
+          updatedAt: freshnessOf(ref, 'people'),
           onRetry: () => ref.invalidate(allPeopleProvider),
           emptyIcon: Icons.people_outline,
           emptyTitle: 'No people yet',

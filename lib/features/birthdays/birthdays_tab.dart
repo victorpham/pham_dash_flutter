@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/cache/cached_list.dart';
+import '../../core/cache/freshness.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
@@ -45,6 +46,7 @@ class BirthdaysTab extends ConsumerWidget {
       onRefresh: () => ref.refresh(upcomingBirthdaysProvider.future),
       child: AsyncView<List<UpcomingBirthday>>(
         value: birthdays,
+        updatedAt: freshnessOf(ref, 'birthdays'),
         onRetry: () => ref.invalidate(upcomingBirthdaysProvider),
         emptyIcon: Icons.cake_outlined,
         emptyTitle: 'No birthdays coming up',

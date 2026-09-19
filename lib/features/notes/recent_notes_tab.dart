@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 
 import '../../core/cache/cached_list.dart';
+import '../../core/cache/freshness.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
@@ -57,6 +58,7 @@ class RecentNotesTab extends ConsumerWidget {
       onRefresh: () => ref.refresh(recentNotesProvider.future),
       child: AsyncView<List<Note>>(
         value: notes,
+        updatedAt: freshnessOf(ref, 'recent_notes'),
         onRetry: () => ref.invalidate(recentNotesProvider),
         emptyIcon: Icons.sticky_note_2_outlined,
         emptyTitle: 'No notes yet',

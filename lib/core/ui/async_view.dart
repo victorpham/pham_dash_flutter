@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/api_exception.dart';
+import 'freshness_caption.dart';
 
 /// The loading / error / empty triad, mirroring the shared Vue component every
 /// screen in the web app routes its async state through.
@@ -30,6 +31,7 @@ class AsyncView<T> extends StatelessWidget {
     this.loading,
     this.explainSlowLoad = true,
     this.fallback,
+    this.updatedAt,
   });
 
   final AsyncValue<T> value;
@@ -60,6 +62,11 @@ class AsyncView<T> extends StatelessWidget {
   /// `AsyncValue.copyWithPrevious` is `@internal` in Riverpod 3.
   final T? fallback;
 
+  /// When the data was last confirmed against the server - see
+  /// [FreshnessCaption]. Rendered above the content, in every state that has
+  /// content to show. Null shows nothing.
+  final DateTime? updatedAt;
+
   bool _isEmpty(T data) {
     final predicate = isEmpty;
     if (predicate != null) return predicate(data);
@@ -71,7 +78,7 @@ class AsyncView<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final fallback = this.fallback;
     if (fallback != null && !value.hasValue) {
-      final content = _content(fallback);
+      final content = _withCaption(_content(fallback));
       final error = value.error;
       if (error != null) return _withBanner(content, error);
       return _withStrip(content);
@@ -85,7 +92,7 @@ class AsyncView<T> extends StatelessWidget {
           loading ?? PatientLoading(explainSlowLoad: explainSlowLoad),
       error: (error, _) => ErrorStateView(error: error, onRetry: onRetry),
       data: (data) {
-        final content = _content(data);
+        final content = _withCaption(_content(data));
 
         // `skipError` above is what keeps `content` when a refresh fails; the
         // banner is what keeps that honest.
@@ -109,6 +116,18 @@ class AsyncView<T> extends StatelessWidget {
           message: emptyMessage,
         )
       : builder(data);
+
+  Widget _withCaption(Widget content) {
+    final at = updatedAt;
+    if (at == null) return content;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FreshnessCaption(updatedAt: at),
+        Flexible(child: content),
+      ],
+    );
+  }
 
   Widget _withBanner(Widget content, Object error) => Column(
     mainAxisSize: MainAxisSize.min,

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/decode.dart';
 import '../providers.dart';
+import 'freshness.dart';
 
 /// Stale-while-revalidate for a list provider.
 ///
@@ -28,8 +29,9 @@ mixin CachedList<T> on AsyncNotifier<List<T>> {
   /// Long enough that a phone left in a drawer still opens to its lists; short
   /// enough that a provider removed from the app does not leave its data
   /// behind forever.
-  static const StorageCacheTime cacheTime =
-      StorageCacheTime(Duration(days: 30));
+  static const StorageCacheTime cacheTime = StorageCacheTime(
+    Duration(days: 30),
+  );
 
   /// Seeds the state from [key] on the notifier's first build and writes every
   /// later `AsyncData` back. [trim] is applied to the cached list only - the
@@ -54,6 +56,7 @@ mixin CachedList<T> on AsyncNotifier<List<T>> {
       },
       options: const StorageOptions(cacheTime: cacheTime),
     );
+    listenSelf((previous, next) => recordFetch(ref, key, previous, next));
   }
 }
 
@@ -65,6 +68,4 @@ String encodeList<T>(List<T> items, Map<String, dynamic> Function(T) toJson) =>
 List<T> decodeEncodedList<T>(
   String encoded,
   T Function(Map<String, dynamic>) fromJson,
-) =>
-    decodeList(jsonDecode(encoded), fromJson);
-
+) => decodeList(jsonDecode(encoded), fromJson);

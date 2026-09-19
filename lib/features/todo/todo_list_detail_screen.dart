@@ -4,11 +4,13 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/api/api_date.dart';
 import '../../core/api/api_exception.dart';
+import '../../core/cache/freshness.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
 import '../../core/ui/color_picker_sheet.dart';
 import '../../core/ui/person_picker.dart';
+import '../../core/ui/sync_indicator.dart';
 import '../../data/models/todo_models.dart';
 import '../people/people_providers.dart';
 import 'todo_item_image.dart';
@@ -46,6 +48,7 @@ class TodoListDetailScreen extends ConsumerWidget {
         // app-bar tint is the closest thing that does not fight the theme.
         backgroundColor: stripe?.withValues(alpha: 0.35),
         actions: [
+          const SyncIndicator(),
           if (list.value != null)
             // Deliberately gated on the real fetch, not [shown]: the actions
             // write, and a stale copy is not what to rename or delete.
@@ -81,6 +84,11 @@ class TodoListDetailScreen extends ConsumerWidget {
       body: AsyncView<TodoList?>(
         value: list,
         fallback: cached,
+        // Own fetch once it has landed; the Lists tab's until then, since
+        // that is whose copy is on screen.
+        updatedAt: list.hasValue
+            ? freshnessOf(ref, 'todo_list:')
+            : freshnessOf(ref, 'todo_lists'),
         onRetry: () => ref.invalidate(todoListDetailProvider(listId)),
         isEmpty: (data) => data == null,
         emptyIcon: Icons.search_off,

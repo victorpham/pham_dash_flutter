@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_exception.dart';
+import '../../core/cache/freshness.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
@@ -33,6 +34,7 @@ class TodoListsTab extends ConsumerWidget {
       onRefresh: () => ref.refresh(todoListsProvider.future),
       child: AsyncView<List<TodoList>>(
         value: lists,
+        updatedAt: freshnessOf(ref, 'todo_lists'),
         onRetry: () => ref.invalidate(todoListsProvider),
         emptyIcon: Icons.checklist,
         emptyTitle: 'No lists yet',

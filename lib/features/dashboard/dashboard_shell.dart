@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/providers.dart';
 import '../../core/theme/theme_controller.dart';
+import '../../core/ui/sync_indicator.dart';
 import '../notes/recent_notes_tab.dart';
 import '../schedule/schedule_tab.dart';
 import '../todo/todo_lists_tab.dart';
@@ -71,7 +72,7 @@ enum DashboardTab {
   /// [floatingActionButton]: the shell owns the AppBar, so a tab that built one
   /// of its own would be nesting a second Scaffold to get it.
   List<Widget> get appBarActions => switch (this) {
-        DashboardTab.lists => const [ShowArchivedButton()],
+        DashboardTab.lists => const [SyncIndicator(), ShowArchivedButton()],
         _ => const [],
       };
 

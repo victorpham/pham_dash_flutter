@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_date.dart';
 import '../../core/cache/cached_list.dart';
+import '../../core/cache/freshness.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
@@ -54,6 +55,7 @@ class ScheduleTab extends ConsumerWidget {
       onRefresh: () => ref.refresh(upcomingEventsProvider.future),
       child: AsyncView<List<CalendarEvent>>(
         value: events,
+        updatedAt: freshnessOf(ref, 'schedule'),
         onRetry: () => ref.invalidate(upcomingEventsProvider),
         emptyIcon: Icons.event_available_outlined,
         emptyTitle: 'Your week looks clear!',

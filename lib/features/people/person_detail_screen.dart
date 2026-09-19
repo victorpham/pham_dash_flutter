@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/router.dart';
 import '../../core/api/api_exception.dart';
+import '../../core/cache/freshness.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
@@ -100,6 +101,9 @@ class PersonDetailScreen extends ConsumerWidget {
       body: AsyncView<Person?>(
         value: person,
         fallback: cached,
+        // The header is the directory's copy until the person's own fetch
+        // lands, so its stamp is the honest one to show meanwhile.
+        updatedAt: freshnessOf(ref, 'people'),
         onRetry: () => ref.invalidate(personProvider(personId)),
         isEmpty: (data) => data == null,
         emptyIcon: Icons.person_off_outlined,
