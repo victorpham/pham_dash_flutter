@@ -63,17 +63,21 @@ void main() {
     expect(prefs.containsKey('phamdash_cache:people'), isFalse);
   });
 
-  // Sign-out must take the lists with it, but nothing else the app keeps in
-  // preferences - the theme is the user's, not the session's.
-  test('clearAll removes only cache keys', () async {
+  // Sign-out must take the lists with it - and the sort choices keyed on
+  // their ids - but nothing else the app keeps in preferences: the theme is
+  // the user's, not the session's.
+  test('clearAll removes the cache keys and the sort choices, nothing else',
+      () async {
     final store = PreferencesStorage(prefs);
     await store.write('people', '[]', _forever);
     await store.write('todo_lists', '[]', _forever);
+    await prefs.setStringList(PreferencesStorage.shoppingSortKey, ['10']);
 
     await PreferencesStorage.clearAll(prefs);
 
     expect(store.read('people'), isNull);
     expect(store.read('todo_lists'), isNull);
+    expect(prefs.getStringList(PreferencesStorage.shoppingSortKey), isNull);
     expect(prefs.getString('phamdash_theme_mode'), 'dark');
   });
 }

@@ -193,6 +193,12 @@ class NotesRepository {
         Note.fromJson,
       );
 
+  /// Every note, newest first, without the author `person` - the directory
+  /// already holds them. This is what the person page slices while its own
+  /// [forPerson] waits on the database. 404s against an API that predates it.
+  Future<List<Note>> all() async =>
+      decodeList(await _api.get<dynamic>('/notes'), Note.fromJson);
+
   Future<Note?> create(
     String personId, {
     required String content,
@@ -232,6 +238,15 @@ class RelationshipsRepository {
 
   Future<List<Relationship>> forPerson(String personId) async => decodeList(
         await _api.get<dynamic>('/people/$personId/relationships'),
+        Relationship.fromJson,
+      );
+
+  /// Every relationship row, newest first - both directions of each pair,
+  /// since the server stores the inverse as its own row. The person page
+  /// slices this while its own [forPerson] waits on the database. 404s against
+  /// an API that predates it.
+  Future<List<Relationship>> all() async => decodeList(
+        await _api.get<dynamic>('/relationships'),
         Relationship.fromJson,
       );
 

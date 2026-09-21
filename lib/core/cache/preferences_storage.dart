@@ -30,6 +30,12 @@ final class PreferencesStorage extends Storage<String, String> {
 
   static const String _prefix = 'phamdash_cache:';
 
+  /// The list ids the user has put into shopping-list order - see
+  /// `ShoppingSortedLists` in the todo feature. Not a cache entry (it has no
+  /// expiry and is never written by Riverpod), but it names lists that belong
+  /// to the signed-in account, so [clearAll] drops it along with them.
+  static const String shoppingSortKey = 'phamdash_shopping_sorted_lists';
+
   Iterable<String> get _keys =>
       _prefs.getKeys().where((k) => k.startsWith(_prefix));
 
@@ -82,8 +88,9 @@ final class PreferencesStorage extends Storage<String, String> {
     }
   }
 
-  /// Drops every cached list. Called on sign-out, because todo lists are
-  /// per-user and the next person to sign in on this phone must not see them.
+  /// Drops every cached list, and the per-list sort choices keyed on them.
+  /// Called on sign-out, because todo lists are per-user and the next person
+  /// to sign in on this phone must not see them.
   ///
   /// Static, on the raw preferences: the provider is typed as the abstract
   /// [Storage] so tests can swap in `Storage.inMemory()`, and sign-out should
@@ -92,6 +99,7 @@ final class PreferencesStorage extends Storage<String, String> {
     for (final key in prefs.getKeys().where((k) => k.startsWith(_prefix))) {
       await prefs.remove(key);
     }
+    await prefs.remove(shoppingSortKey);
   }
 }
 

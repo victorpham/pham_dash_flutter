@@ -14,9 +14,12 @@ import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
 import '../../core/ui/person_avatar.dart';
 import '../../core/ui/person_picker.dart';
+import '../../core/ui/sync_indicator.dart';
 import '../../data/models/converters.dart';
 import '../../data/models/people_models.dart';
 import '../notes/recent_notes_tab.dart';
+import 'pending_creates.dart';
+import 'pending_status.dart';
 import 'people_providers.dart';
 import 'person_edit_sheet.dart';
 import 'person_picture_gallery.dart';
@@ -67,19 +70,43 @@ class PersonDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final person = ref.watch(personProvider(personId));
-    // The directory cache already holds this person; show them from there
-    // while the fetch waits on the database.
-    final cached = ref
-        .watch(allPeopleProvider)
-        .value
-        ?.where((candidate) => candidate.id == personId)
-        .firstOrNull;
+    // The route may name a person who does not exist yet: `/people/pending-1`
+    // is where the People list sends the user the moment "Add person" closes.
+    // Until the create lands the page is the placeholder from the queue, and
+    // nothing here fetches - `GET /people/pending-1` would only 404. Once it
+    // lands the id resolves and the page is an ordinary one for the real id;
+    // the route itself keeps the temp id, which nothing minds.
+    ref.watch(pendingCreatesProvider);
+    final queue = ref.read(pendingCreatesProvider.notifier);
+    final id = queue.resolve(personId);
+    final pending = isPendingPersonId(id) ? queue.person(id) : null;
+    final isPlaceholder = isPendingPersonId(id);
+
+    final AsyncValue<Person?> person;
+    final Person? cached;
+    if (isPlaceholder) {
+      // Null when the placeholder has been discarded: "Person not found".
+      person = AsyncData(pending?.placeholder);
+      cached = null;
+    } else {
+      person = ref.watch(personProvider(id));
+      // The directory cache already holds this person; show them from there
+      // while the fetch waits on the database. A person who has just landed
+      // is not in the directory yet - the placeholder stands in until the
+      // first real fetch, so the page does not blink to a spinner between.
+      cached = ref
+              .watch(allPeopleProvider)
+              .value
+              ?.where((candidate) => candidate.id == id)
+              .firstOrNull ??
+          queue.person(personId)?.placeholder.copyWith(id: id);
+    }
 
     return Scaffold(
       appBar: AppBar(
         title: Text(person.value?.fullName ?? 'Person'),
         actions: [
+          SyncIndicator(onFailedTap: () => showFailedChangesSheet(context)),
           // Only once a chain has formed. On the first person page the ordinary
           // back button already does this, and a second button that behaves
           // identically is just noise.
@@ -89,7 +116,9 @@ class PersonDetailScreen extends ConsumerWidget {
               icon: const Icon(Icons.people_alt_outlined),
               onPressed: () => _backToPeopleList(context),
             ),
-          if (person.value != null)
+          // Nothing to edit until the server has the person: the edit sheet
+          // writes to `PUT /people/{id}`, and there is no id yet.
+          if (person.value != null && !isPlaceholder)
             IconButton(
               tooltip: 'Edit',
               icon: const Icon(Icons.edit_outlined),
@@ -103,28 +132,34 @@ class PersonDetailScreen extends ConsumerWidget {
         fallback: cached,
         // The header is the directory's copy until the person's own fetch
         // lands, so its stamp is the honest one to show meanwhile.
-        updatedAt: freshnessOf(ref, 'people'),
-        onRetry: () => ref.invalidate(personProvider(personId)),
+        updatedAt: isPlaceholder ? null : freshnessOf(ref, 'people'),
+        onRetry: () => ref.invalidate(personProvider(id)),
         isEmpty: (data) => data == null,
         emptyIcon: Icons.person_off_outlined,
         emptyTitle: 'Person not found',
         builder: (data) => RefreshIndicator(
           onRefresh: () async {
-            invalidatePerson(ref, personId);
-            await ref.read(personProvider(personId).future);
+            if (isPlaceholder) return;
+            invalidatePerson(ref, id);
+            await ref.read(personProvider(id).future);
           },
           child: ListView(
             padding: const EdgeInsets.only(bottom: 40),
             children: [
-              _Header(person: data!),
+              if (pending != null) _PendingPersonBanner(entry: pending),
+              _Header(person: data!, pending: pending),
               // Attached to the header rather than fenced off with a divider:
               // tags are an attribute of the person, not a section of records
               // peer to Relationships and Notes.
-              _TagsRow(person: data),
+              _TagsRow(person: data, readOnly: isPlaceholder),
               const Divider(height: 32),
-              _RelationshipsSection(person: data),
+              _RelationshipsSection(person: data, isPlaceholder: isPlaceholder),
               const Divider(height: 32),
-              _NotesSection(personId: personId, firstName: data.firstName),
+              _NotesSection(
+                personId: id,
+                firstName: data.firstName,
+                isPlaceholder: isPlaceholder,
+              ),
             ],
           ),
         ),
@@ -133,10 +168,57 @@ class PersonDetailScreen extends ConsumerWidget {
   }
 }
 
+/// Sits above the header of a person whose create is still out or has failed.
+///
+/// While sending it also says what the page is for meanwhile - notes and
+/// relationships added here wait for the person and go once it exists - since
+/// nothing else on the page hints that this is allowed. A discard pops the
+/// page: the person it showed no longer exists anywhere.
+class _PendingPersonBanner extends StatelessWidget {
+  const _PendingPersonBanner({required this.entry});
+
+  final PendingPerson entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('pending-person-banner'),
+      width: double.infinity,
+      color: entry.isFailed
+          ? scheme.errorContainer.withValues(alpha: 0.35)
+          : scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          PendingStatusLine(
+            entry: entry,
+            onDiscarded: () => Navigator.of(context).maybePop(),
+          ),
+          if (entry.isSending) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Notes and relationships you add now are saved once '
+              '${entry.placeholder.firstName} is.',
+              style: TextStyle(fontSize: 12.5, color: scheme.mutedForeground),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _Header extends ConsumerWidget {
-  const _Header({required this.person});
+  const _Header({required this.person, this.pending});
 
   final Person person;
+
+  /// Set while the person is still the queue's placeholder: the avatar shows
+  /// the picture chosen on the sheet, and the gallery - keyed by a server id
+  /// there is not yet - stays shut.
+  final PendingPerson? pending;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -161,12 +243,15 @@ class _Header extends ConsumerWidget {
               label: 'Pictures of ${person.fullName}',
               child: InkWell(
                 customBorder: const CircleBorder(),
-                onTap: () => showPersonPictureGallery(context, person: person),
+                onTap: pending != null
+                    ? null
+                    : () => showPersonPictureGallery(context, person: person),
                 child: Stack(
                   alignment: Alignment.bottomRight,
                   children: [
                     PersonAvatar(
                       storedPath: person.profilePictureUrl,
+                      localPath: pending?.picturePath,
                       initials: person.initials,
                       size: 72,
                     ),
@@ -256,13 +341,27 @@ class _Header extends ConsumerWidget {
 // --- relationships ---------------------------------------------------------
 
 class _RelationshipsSection extends ConsumerWidget {
-  const _RelationshipsSection({required this.person});
+  const _RelationshipsSection({
+    required this.person,
+    required this.isPlaceholder,
+  });
 
   final Person person;
 
+  /// The person is still the queue's placeholder: nothing is fetched for
+  /// them, and the section is the queued relationships alone.
+  final bool isPlaceholder;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final relationships = ref.watch(personRelationshipsProvider(person.id));
+    final relationships = isPlaceholder
+        ? const AsyncData(<Relationship>[])
+        : ref.watch(personRelationshipsProvider(person.id));
+    final fallback = isPlaceholder
+        ? null
+        : relationshipsFor(ref.watch(allRelationshipsProvider), person.id);
+    final queue = ref.watch(pendingCreatesProvider);
+    final resolve = ref.read(pendingCreatesProvider.notifier).resolve;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -275,22 +374,54 @@ class _RelationshipsSection extends ConsumerWidget {
             onPressed: () => _add(context, ref),
           ),
         ),
-        switch (relationships) {
-          AsyncError(:final error) => _Message(_messageFor(error)),
-          AsyncValue(hasValue: false) => const _SectionLoading(),
-          AsyncValue(value: final data) => _RelationshipList(
+        _SectionBody<Relationship>(
+          value: relationships,
+          fallback: fallback,
+          builder: (data) {
+            // Queued rows first, drawn among the fetched ones by group so a
+            // pending spouse sits where the real one will.
+            final pending = pendingRelationshipsFor(
+              queue,
+              person.id,
+              shown: data,
+              resolve: resolve,
+            );
+            return _RelationshipList(
               personId: person.id,
-              groups: RelationshipGroups.from(data ?? const []),
-            ),
-        },
+              groups: RelationshipGroups.from([
+                for (final e in pending) e.placeholder,
+                ...data,
+              ]),
+              pending: {for (final e in pending) e.placeholder.relationshipId: e},
+            );
+          },
+        ),
       ],
     );
   }
 
   Future<void> _add(BuildContext context, WidgetRef ref) async {
-    final people = await ref.read(allPeopleProvider.future);
-    final existing = ref.read(personRelationshipsProvider(person.id)).value ??
-        const <Relationship>[];
+    // The cached directory is good enough for a picker, and after an hour
+    // idle the fetch behind `.future` is the database wake itself.
+    final List<Person> people = ref.read(allPeopleProvider).value ??
+        await ref.read(allPeopleProvider.future);
+    final queue = ref.read(pendingCreatesProvider.notifier);
+    // The cached slice stands in while the person's own fetch is pending, so
+    // the picker hides already-related people from the first tap - and so do
+    // the relationships queued but not yet landed.
+    final existing = [
+      ...?(isPlaceholder
+          ? null
+          : ref.read(personRelationshipsProvider(person.id)).value ??
+              relationshipsFor(ref.read(allRelationshipsProvider), person.id)),
+      for (final e in pendingRelationshipsFor(
+        ref.read(pendingCreatesProvider),
+        person.id,
+        shown: const [],
+        resolve: queue.resolve,
+      ))
+        e.placeholder,
+    ];
 
     // The web dropdown offers neither this person nor anyone already related to
     // them, which keeps the two guaranteed 400s off the menu.
@@ -343,30 +474,32 @@ class _RelationshipsSection extends ConsumerWidget {
     );
     if (type == null || !context.mounted) return;
 
-    try {
-      await ref.read(relationshipsRepositoryProvider).create(
-            person.id,
-            relatedPersonId: selected.id,
-            type: type,
-          );
-    } on ApiException catch (error) {
-      if (context.mounted) _toast(context, error.message);
-      return;
-    }
-
-    // One create can write several rows — the inverse, the whole sibling group,
-    // a spouse's copy of a child link — so both people are re-read rather than
-    // patched.
-    invalidatePerson(ref, person.id);
-    invalidatePerson(ref, selected.id);
+    // Queued, not awaited: the row appears now and the queue re-reads both
+    // people when the server answers - one create can write several rows (the
+    // inverse, the whole sibling group, a spouse's copy of a child link), so
+    // nothing is patched. A failure stays on the row with Retry and Discard.
+    queue.addRelationship(
+      person.id,
+      related: selected,
+      type: type,
+      personName: person.firstName,
+    );
   }
 }
 
 class _RelationshipList extends ConsumerWidget {
-  const _RelationshipList({required this.personId, required this.groups});
+  const _RelationshipList({
+    required this.personId,
+    required this.groups,
+    this.pending = const {},
+  });
 
   final String personId;
   final RelationshipGroups groups;
+
+  /// Queue entries by their placeholder's (negative) id, for the rows that
+  /// are not the server's yet.
+  final Map<int, PendingRelationship> pending;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -380,14 +513,26 @@ class _RelationshipList extends ConsumerWidget {
         if (groups.hasImmediateFamily) ...[
           const _SubHeader('Immediate family'),
           if (groups.spouse case final spouse?)
-            _RelationshipRow(personId: personId, relationship: spouse),
+            _RelationshipRow(
+              personId: personId,
+              relationship: spouse,
+              pending: pending[spouse.relationshipId],
+            ),
           for (final child in groups.children)
-            _RelationshipRow(personId: personId, relationship: child),
+            _RelationshipRow(
+              personId: personId,
+              relationship: child,
+              pending: pending[child.relationshipId],
+            ),
         ],
         if (groups.others.isNotEmpty) ...[
           _SubHeader('Other relationships (${groups.others.length})'),
           for (final other in groups.others)
-            _RelationshipRow(personId: personId, relationship: other),
+            _RelationshipRow(
+              personId: personId,
+              relationship: other,
+              pending: pending[other.relationshipId],
+            ),
         ],
       ],
     );
@@ -395,15 +540,25 @@ class _RelationshipList extends ConsumerWidget {
 }
 
 class _RelationshipRow extends ConsumerWidget {
-  const _RelationshipRow({required this.personId, required this.relationship});
+  const _RelationshipRow({
+    required this.personId,
+    required this.relationship,
+    this.pending,
+  });
 
   final String personId;
   final Relationship relationship;
+
+  /// Set while the row is the queue's, not the server's. No Remove button then
+  /// - there is no `relationshipId` to delete - and the status line, with its
+  /// own Retry and Discard, takes the subtitle instead.
+  final PendingRelationship? pending;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final birthDate = relationship.relatedPersonBirthDate;
+    final pending = this.pending;
 
     return ListTile(
       leading: PersonAvatar(
@@ -417,19 +572,33 @@ class _RelationshipRow extends ConsumerWidget {
             : relationship.relatedPersonName,
         style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
       ),
-      subtitle: Text(
-        [
-          relationship.type.label,
-          if (birthDate != null) DateFormat('MMM d, y').format(birthDate),
-        ].join(' · '),
-        style: TextStyle(fontSize: 12.5, color: scheme.mutedForeground),
-      ),
-      trailing: IconButton(
-        tooltip: 'Remove',
-        icon: const Icon(Icons.link_off, size: 20),
-        onPressed: () => _remove(context, ref),
-      ),
-      // Each row is a link to that person, as on the web.
+      subtitle: pending != null && !pending.isDone
+          ? Row(
+              children: [
+                Text(
+                  relationship.type.label,
+                  style: TextStyle(fontSize: 12.5, color: scheme.mutedForeground),
+                ),
+                const SizedBox(width: 8),
+                Flexible(child: PendingStatusLine(entry: pending)),
+              ],
+            )
+          : Text(
+              [
+                relationship.type.label,
+                if (birthDate != null) DateFormat('MMM d, y').format(birthDate),
+              ].join(' · '),
+              style: TextStyle(fontSize: 12.5, color: scheme.mutedForeground),
+            ),
+      trailing: pending != null
+          ? null
+          : IconButton(
+              tooltip: 'Remove',
+              icon: const Icon(Icons.link_off, size: 20),
+              onPressed: () => _remove(context, ref),
+            ),
+      // Each row is a link to that person, as on the web. The related person
+      // is always a real one, so the link works from a pending row too.
       onTap: () => context.push('/people/${relationship.relatedPersonId}'),
     );
   }
@@ -482,34 +651,114 @@ class _RelationshipRow extends ConsumerWidget {
 // --- notes -----------------------------------------------------------------
 
 class _NotesSection extends ConsumerWidget {
-  const _NotesSection({required this.personId, required this.firstName});
+  const _NotesSection({
+    required this.personId,
+    required this.firstName,
+    required this.isPlaceholder,
+  });
 
   final String personId;
   final String firstName;
 
+  /// See [_RelationshipsSection.isPlaceholder].
+  final bool isPlaceholder;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final notes = ref.watch(personNotesProvider(personId));
+    final notes = isPlaceholder
+        ? const AsyncData(<Note>[])
+        : ref.watch(personNotesProvider(personId));
+    final fallback =
+        isPlaceholder ? null : notesFor(ref.watch(allNotesProvider), personId);
+    final queue = ref.watch(pendingCreatesProvider);
+    final resolve = ref.read(pendingCreatesProvider.notifier).resolve;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _SectionHeader(title: 'Notes'),
         _NoteComposer(personId: personId, firstName: firstName),
-        switch (notes) {
-          AsyncError(:final error) => _Message(_messageFor(error)),
-          AsyncValue(hasValue: false) => const _SectionLoading(),
-          AsyncValue(value: final data) when (data ?? const []).isEmpty =>
-            const _Message('No notes yet. Add one above.'),
-          AsyncValue(value: final data) => Column(
+        _SectionBody<Note>(
+          value: notes,
+          fallback: fallback,
+          // An empty slice for a person nobody has written about is correct
+          // data, not a missing answer: it renders the empty state under the
+          // bar rather than a spinner.
+          builder: (data) {
+            // Queued notes lead: they are the newest, and newest-first is the
+            // order the server returns.
+            final pending = pendingNotesFor(
+              queue,
+              personId,
+              shown: data,
+              resolve: resolve,
+            );
+            if (data.isEmpty && pending.isEmpty) {
+              return const _Message('No notes yet. Add one above.');
+            }
+            return Column(
               children: [
-                for (final note in data!)
-                  _NoteCard(personId: personId, note: note),
+                for (final e in pending.reversed)
+                  _NoteCard(personId: personId, note: e.note, pending: e),
+                for (final note in data) _NoteCard(personId: personId, note: note),
               ],
-            ),
-        },
+            );
+          },
+        ),
       ],
     );
+  }
+}
+
+/// A section's list, with the bulk cache's copy standing in until the
+/// person's own fetch answers - the inline counterpart of `AsyncView.fallback`,
+/// which is not used here because its spinner, empty state and banner are all
+/// sized for a whole screen.
+///
+/// The person's own value always wins once it exists, including through a
+/// refresh and after a refresh that failed. That last case is a change from
+/// the section's earlier `switch`, which matched the error first and replaced
+/// a list the user was looking at with one line of error text; `AsyncView`'s
+/// rule - a value, once shown, is never taken away - applies here too now.
+///
+/// No progress indicator of its own: the page header already carries the
+/// refreshing strip (and the waking-up hint) for the person fetch, and a
+/// second bar per section under it read as three things loading, not one.
+/// With nothing cached the section is simply blank until its fetch lands.
+class _SectionBody<T> extends StatelessWidget {
+  const _SectionBody({
+    required this.value,
+    required this.fallback,
+    required this.builder,
+  });
+
+  final AsyncValue<List<T>> value;
+
+  /// This person's slice of the bulk cache; null when nothing is cached yet.
+  final List<T>? fallback;
+
+  final Widget Function(List<T> data) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    final own = value.value;
+    if (own != null) return builder(own);
+
+    final fallback = this.fallback;
+    if (fallback != null) {
+      if (!value.hasError) return builder(fallback);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _Message(RefreshFailedBanner.title),
+          builder(fallback),
+        ],
+      );
+    }
+
+    final error = value.error;
+    if (error != null) return _Message(_messageFor(error));
+    return const SizedBox.shrink();
   }
 }
 
@@ -526,7 +775,6 @@ class _NoteComposer extends ConsumerStatefulWidget {
 class _NoteComposerState extends ConsumerState<_NoteComposer> {
   final _content = TextEditingController();
   final _category = TextEditingController();
-  bool _saving = false;
   bool _expanded = false;
 
   @override
@@ -571,7 +819,7 @@ class _NoteComposerState extends ConsumerState<_NoteComposer> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: _saving ? null : _cancel,
+                  onPressed: _cancel,
                   child: const Text('Cancel'),
                 ),
                 const SizedBox(width: 8),
@@ -579,9 +827,7 @@ class _NoteComposerState extends ConsumerState<_NoteComposer> {
                   style: FilledButton.styleFrom(
                     minimumSize: const Size(96, 40),
                   ),
-                  onPressed: _saving || _content.text.trim().isEmpty
-                      ? null
-                      : _save,
+                  onPressed: _content.text.trim().isEmpty ? null : _save,
                   child: const Text('Save note'),
                 ),
               ],
@@ -599,39 +845,31 @@ class _NoteComposerState extends ConsumerState<_NoteComposer> {
     FocusScope.of(context).unfocus();
   }
 
-  Future<void> _save() async {
-    setState(() => _saving = true);
+  /// Queued, not awaited: the card appears in the section at once and the
+  /// composer clears, while the queue posts the note - after the person, if
+  /// the person is still on their way - and re-reads the lists when it lands.
+  /// A failure stays on the card with Retry and Discard.
+  void _save() {
     final category = _category.text.trim();
-
-    try {
-      await ref.read(notesRepositoryProvider).create(
-            widget.personId,
-            content: _content.text.trim(),
-            category: category.isEmpty ? null : category,
-          );
-    } on ApiException catch (error) {
-      if (mounted) {
-        setState(() => _saving = false);
-        _toast(context, error.message);
-      }
-      return;
-    }
-
-    ref.invalidate(personNotesProvider(widget.personId));
-    // The dashboard's recent-notes feed is now a note behind.
-    ref.invalidate(recentNotesProvider);
-    if (mounted) {
-      setState(() => _saving = false);
-      _cancel();
-    }
+    ref.read(pendingCreatesProvider.notifier).addNote(
+          widget.personId,
+          content: _content.text.trim(),
+          category: category.isEmpty ? null : category,
+          personName: widget.firstName,
+        );
+    _cancel();
   }
 }
 
 class _NoteCard extends ConsumerWidget {
-  const _NoteCard({required this.personId, required this.note});
+  const _NoteCard({required this.personId, required this.note, this.pending});
 
   final String personId;
   final Note note;
+
+  /// Set while the card is the queue's, not the server's: no Edit or Delete
+  /// (there is no `noteId` to address), the status line in their place.
+  final PendingNote? pending;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -639,6 +877,7 @@ class _NoteCard extends ConsumerWidget {
     final createdAt = note.createdAt;
     final isRecent = createdAt != null &&
         DateTime.now().difference(createdAt) < _recentNoteWindow;
+    final pending = this.pending;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
@@ -676,18 +915,27 @@ class _NoteCard extends ConsumerWidget {
                 _Pill(text: 'New', color: scheme.completed),
               ],
               const Spacer(),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                tooltip: 'Edit',
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                onPressed: () => _edit(context, ref),
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                tooltip: 'Delete',
-                icon: const Icon(Icons.delete_outline, size: 18),
-                onPressed: () => _delete(context, ref),
-              ),
+              if (pending != null)
+                Flexible(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: PendingStatusLine(entry: pending),
+                  ),
+                )
+              else ...[
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Edit',
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  onPressed: () => _edit(context, ref),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Delete',
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  onPressed: () => _delete(context, ref),
+                ),
+              ],
             ],
           ),
           Padding(
@@ -728,6 +976,7 @@ class _NoteCard extends ConsumerWidget {
       return;
     }
     ref.invalidate(personNotesProvider(personId));
+    ref.invalidate(allNotesProvider);
     ref.invalidate(recentNotesProvider);
   }
 
@@ -758,6 +1007,7 @@ class _NoteCard extends ConsumerWidget {
       return;
     }
     ref.invalidate(personNotesProvider(personId));
+    ref.invalidate(allNotesProvider);
     ref.invalidate(recentNotesProvider);
   }
 }
@@ -890,22 +1140,6 @@ class _SubHeader extends StatelessWidget {
       );
 }
 
-class _SectionLoading extends StatelessWidget {
-  const _SectionLoading();
-
-  @override
-  Widget build(BuildContext context) => const Padding(
-        padding: EdgeInsets.all(20),
-        child: Center(
-          child: SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
-        ),
-      );
-}
-
 class _Message extends StatelessWidget {
   const _Message(this.text);
 
@@ -933,9 +1167,12 @@ class _Message extends StatelessWidget {
 /// one tap target instead of a 20px one beside a 30px one, one code path, and
 /// the sheet has to exist anyway for the people screen.
 class _TagsRow extends ConsumerWidget {
-  const _TagsRow({required this.person});
+  const _TagsRow({required this.person, this.readOnly = false});
 
   final Person person;
+
+  /// True while the person is the queue's placeholder.
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -953,12 +1190,15 @@ class _TagsRow extends ConsumerWidget {
               text: tag.name,
               color: parseHexColor(tag.color) ?? scheme.onSurfaceVariant,
             ),
-          ActionChip(
-            avatar: const Icon(Icons.sell_outlined, size: 16),
-            label: Text(person.tags.isEmpty ? 'Add tags' : 'Edit'),
-            visualDensity: VisualDensity.compact,
-            onPressed: () => showPersonTagsSheet(context, person: person),
-          ),
+          // Attach and detach are keyed by the person's id, so a placeholder
+          // shows its ticked tags and offers nothing to change them yet.
+          if (!readOnly)
+            ActionChip(
+              avatar: const Icon(Icons.sell_outlined, size: 16),
+              label: Text(person.tags.isEmpty ? 'Add tags' : 'Edit'),
+              visualDensity: VisualDensity.compact,
+              onPressed: () => showPersonTagsSheet(context, person: person),
+            ),
         ],
       ),
     );

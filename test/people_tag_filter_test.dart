@@ -31,6 +31,10 @@ Future<void> _pumpPeople(
       sharedPreferencesProvider.overrideWithValue(prefs),
       allPeopleProvider.overrideWithBuild((ref, _) => people),
       personTagsProvider.overrideWithBuild((ref, _) => tags),
+      allNotesProvider.overrideWithBuild((ref, _) => const <Note>[]),
+      allRelationshipsProvider.overrideWithBuild(
+        (ref, _) => const <Relationship>[],
+      ),
     ],
   );
   addTearDown(container.dispose);

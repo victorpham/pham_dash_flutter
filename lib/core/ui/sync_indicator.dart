@@ -6,12 +6,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../sync/pending_writes.dart';
 
 /// App-bar glyph for optimistic writes: a cloud with a spinner while any are
-/// in flight, a check for a moment once the last one lands, nothing otherwise.
+/// in flight, a check for a moment once the last one lands, a red cloud while
+/// any have failed and are waiting on a retry, nothing otherwise.
+///
+/// In flight outranks failed: something is still happening, and the failure
+/// is still on screen where it happened. Tapping the failed glyph calls
+/// [onFailedTap] - the people screens open their failed-changes sheet - and
+/// without one the glyph is a tooltip only, which is still enough to say why
+/// it is red.
 ///
 /// Sized like an `IconButton` so it sits in an `AppBar.actions` row without
 /// shifting its neighbours when it appears.
 class SyncIndicator extends ConsumerStatefulWidget {
-  const SyncIndicator({super.key});
+  const SyncIndicator({super.key, this.onFailedTap});
+
+  final VoidCallback? onFailedTap;
 
   /// How long the check stays up after the last write is confirmed.
   static const Duration confirmedFor = Duration(seconds: 2);
@@ -75,6 +84,23 @@ class _SyncIndicatorState extends ConsumerState<SyncIndicator> {
           ],
         ),
       );
+    } else if (pending.hasFailures) {
+      final message = pending.failed == 1
+          ? '1 change couldn’t be saved'
+          : '${pending.failed} changes couldn’t be saved';
+      final onTap = widget.onFailedTap;
+      glyph = onTap == null
+          ? Tooltip(
+              key: const ValueKey('sync-failed'),
+              message: message,
+              child: Icon(Icons.cloud_off_outlined, color: scheme.error),
+            )
+          : IconButton(
+              key: const ValueKey('sync-failed'),
+              tooltip: message,
+              icon: Icon(Icons.cloud_off_outlined, color: scheme.error),
+              onPressed: onTap,
+            );
     } else if (_showConfirmed) {
       glyph = Tooltip(
         key: const ValueKey('sync-confirmed'),

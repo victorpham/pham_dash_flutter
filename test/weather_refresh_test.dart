@@ -52,6 +52,18 @@ void main() {
         ],
       );
 
+  group('weatherCityProvider', () {
+    test('a saved city wins over the default', () {
+      expect(container().read(weatherCityProvider), 'Seattle');
+    });
+
+    test('falls back to Tustin until a city has been saved', () async {
+      SharedPreferences.setMockInitialValues({});
+      prefs = await SharedPreferences.getInstance();
+      expect(container().read(weatherCityProvider), 'Tustin, CA');
+    });
+  });
+
   group('refreshIfStale', () {
     test('leaves a forecast younger than fifteen minutes alone', () async {
       final c = container();

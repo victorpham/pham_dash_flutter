@@ -53,8 +53,12 @@ Future<void> _pumpDetail(WidgetTester tester, Person person) async {
           (ref, id) => const <Relationship>[],
         ),
         personNotesProvider.overrideWith((ref, id) => const <Note>[]),
-        personPicturesProvider.overrideWith(
-          (ref, id) => const <PersonPicture>[],
+        personPicturesProvider.overrideWithBuild(
+          (ref, _) => const <PersonPicture>[],
+        ),
+        allNotesProvider.overrideWithBuild((ref, _) => const <Note>[]),
+        allRelationshipsProvider.overrideWithBuild(
+          (ref, _) => const <Relationship>[],
         ),
       ],
       child: MaterialApp.router(routerConfig: router),

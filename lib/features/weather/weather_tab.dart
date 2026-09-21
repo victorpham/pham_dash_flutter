@@ -11,12 +11,15 @@ import '../../data/models/weather_models.dart';
 /// The city the forecast is for, under the same key the web widget uses.
 const String _cityKey = 'weatherCity';
 
-/// The chosen city, or null until one has been entered.
-class WeatherCity extends Notifier<String?> {
+/// Home. Shown until the user picks somewhere else.
+const String _defaultCity = 'Tustin, CA';
+
+/// The chosen city, or [_defaultCity] until one has been entered.
+class WeatherCity extends Notifier<String> {
   @override
-  String? build() {
+  String build() {
     final saved = ref.watch(sharedPreferencesProvider).getString(_cityKey);
-    return (saved == null || saved.isEmpty) ? null : saved;
+    return (saved == null || saved.isEmpty) ? _defaultCity : saved;
   }
 
   Future<void> set(String city) async {
@@ -28,7 +31,7 @@ class WeatherCity extends Notifier<String?> {
 }
 
 final weatherCityProvider =
-    NotifierProvider<WeatherCity, String?>(WeatherCity.new);
+    NotifierProvider<WeatherCity, String>(WeatherCity.new);
 
 /// The forecast for the chosen city.
 ///
@@ -38,30 +41,28 @@ final weatherCityProvider =
 /// What re-runs them is [WeatherForecastNotifier.refreshIfStale], which the
 /// tab calls each time it comes into view.
 final weatherForecastProvider =
-    AsyncNotifierProvider<WeatherForecastNotifier, WeatherForecast?>(
+    AsyncNotifierProvider<WeatherForecastNotifier, WeatherForecast>(
   WeatherForecastNotifier.new,
 );
 
-class WeatherForecastNotifier extends AsyncNotifier<WeatherForecast?> {
+class WeatherForecastNotifier extends AsyncNotifier<WeatherForecast> {
   /// NWS hourly forecasts update about hourly; fifteen minutes keeps a tab
   /// checked throughout the day current without a fetch per glance.
   static const Duration staleAfter = Duration(minutes: 15);
 
   @override
-  Future<WeatherForecast?> build() async {
+  Future<WeatherForecast> build() async {
     final city = ref.watch(weatherCityProvider);
-    if (city == null) return null;
     return ref.watch(weatherRepositoryProvider).forecast(city);
   }
 
-  /// Refetches unless the forecast on screen is younger than [staleAfter], a
-  /// fetch is already running, or there is no city to fetch for. A failed
-  /// last attempt counts as stale, so revisiting the tab retries it.
+  /// Refetches unless the forecast on screen is younger than [staleAfter] or a
+  /// fetch is already running. A failed last attempt counts as stale, so
+  /// revisiting the tab retries it.
   ///
   /// A refresh, not an invalidate, so the old forecast stays on screen while
   /// the new one loads - `AsyncView` skips the spinner for refreshes.
   Future<void> refreshIfStale({DateTime? now}) async {
-    if (ref.read(weatherCityProvider) == null) return;
     if (state.isLoading) return;
 
     final fetchedAt = state.value?.fetchedAt;
@@ -139,94 +140,18 @@ class _WeatherTabState extends ConsumerState<WeatherTab> {
 
   @override
   Widget build(BuildContext context) {
-    final city = ref.watch(weatherCityProvider);
-    if (city == null) return const _CityPrompt();
-
     final forecast = ref.watch(weatherForecastProvider);
 
     return RefreshIndicator(
       onRefresh: () => ref.refresh(weatherForecastProvider.future),
-      child: AsyncView<WeatherForecast?>(
+      child: AsyncView<WeatherForecast>(
         value: forecast,
         onRetry: () => ref.invalidate(weatherForecastProvider),
-        isEmpty: (data) => data == null,
         // weather.gov has no database to wake; a slow forecast is just slow.
         explainSlowLoad: false,
-        emptyIcon: Icons.location_off_outlined,
-        emptyTitle: 'No forecast',
-        builder: (data) => _Forecast(forecast: data!),
+        builder: (data) => _Forecast(forecast: data),
       ),
     );
-  }
-}
-
-/// Shown until a city has been set, and again whenever the user changes it.
-class _CityPrompt extends ConsumerStatefulWidget {
-  const _CityPrompt();
-
-  @override
-  ConsumerState<_CityPrompt> createState() => _CityPromptState();
-}
-
-class _CityPromptState extends ConsumerState<_CityPrompt> {
-  late final _controller =
-      TextEditingController(text: ref.read(weatherCityProvider) ?? '');
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
-      children: [
-        Icon(
-          Icons.place_outlined,
-          size: 48,
-          color: scheme.primary.withValues(alpha: 0.55),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          'Where are you?',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Forecasts come from weather.gov, which covers US locations only.',
-          textAlign: TextAlign.center,
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(color: scheme.mutedForeground),
-        ),
-        const SizedBox(height: 24),
-        TextField(
-          controller: _controller,
-          autofocus: true,
-          textInputAction: TextInputAction.done,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'City',
-            hintText: 'San Francisco, CA',
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (_) => _save(),
-        ),
-        const SizedBox(height: 16),
-        FilledButton(onPressed: _save, child: const Text('Show the forecast')),
-      ],
-    );
-  }
-
-  void _save() {
-    ref.read(weatherCityProvider.notifier).set(_controller.text);
-    FocusScope.of(context).unfocus();
   }
 }
 
@@ -329,7 +254,7 @@ class _LocationBar extends ConsumerWidget {
 
   Future<void> _changeCity(BuildContext context, WidgetRef ref) async {
     final controller =
-        TextEditingController(text: ref.read(weatherCityProvider) ?? '');
+        TextEditingController(text: ref.read(weatherCityProvider));
 
     final city = await showDialog<String>(
       context: context,
@@ -340,7 +265,7 @@ class _LocationBar extends ConsumerWidget {
           autofocus: true,
           decoration: const InputDecoration(
             labelText: 'City',
-            hintText: 'San Francisco, CA',
+            hintText: _defaultCity,
           ),
           onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
         ),

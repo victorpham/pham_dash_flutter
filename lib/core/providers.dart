@@ -109,8 +109,29 @@ class AuthController extends AsyncNotifier<AuthUser?> {
 
   /// Cached lists belong to the session that fetched them: todo lists are
   /// per-user, and the next person to sign in here must not open to them.
-  Future<void> _clearCache() =>
-      PreferencesStorage.clearAll(ref.read(sharedPreferencesProvider));
+  Future<void> _clearCache() {
+    ref.read(sessionEndedProvider.notifier).bump();
+    return PreferencesStorage.clearAll(ref.read(sharedPreferencesProvider));
+  }
+}
+
+/// Ticks once per sign-out, whether the user asked for it or a 401 forced it.
+///
+/// Feature state that belongs to the signed-in session - the queue of people
+/// writes still on their way, say - listens to this to drop itself. A counter
+/// rather than a stream, so a listener registered in a notifier's `build` is
+/// enough; and its own provider rather than a watch on [authControllerProvider],
+/// because reading that one restores the session from secure storage, which
+/// is nothing a widget test of a people screen should be dragged into.
+final sessionEndedProvider = NotifierProvider<SessionEnded, int>(
+  SessionEnded.new,
+);
+
+class SessionEnded extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void bump() => state = state + 1;
 }
 
 final authControllerProvider =

@@ -11,6 +11,9 @@ import '../../core/ui/async_view.dart';
 import '../../core/ui/person_avatar.dart';
 import '../../data/models/people_models.dart';
 import '../calendar/event_utils.dart';
+import '../people/pending_creates.dart';
+import '../people/pending_status.dart';
+import '../people/people_providers.dart';
 import 'add_note_sheet.dart';
 
 /// The only notes endpoint that embeds the author `person`, so every row can
@@ -53,6 +56,12 @@ class RecentNotesTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notes = ref.watch(recentNotesProvider);
+    // Notes queued from the sheet lead the feed until the re-read that
+    // follows their save contains them. `/notes/recent` embeds the author;
+    // a placeholder borrows theirs from the directory so the avatar draws.
+    final queue = ref.watch(pendingCreatesProvider);
+    final resolve = ref.read(pendingCreatesProvider.notifier).resolve;
+    final directory = ref.watch(allPeopleProvider).value ?? const <Person>[];
 
     return RefreshIndicator(
       onRefresh: () => ref.refresh(recentNotesProvider.future),
@@ -60,24 +69,67 @@ class RecentNotesTab extends ConsumerWidget {
         value: notes,
         updatedAt: freshnessOf(ref, 'recent_notes'),
         onRetry: () => ref.invalidate(recentNotesProvider),
+        isEmpty: (data) =>
+            data.isEmpty && _pendingRows(queue, data, resolve).isEmpty,
         emptyIcon: Icons.sticky_note_2_outlined,
         emptyTitle: 'No notes yet',
         emptyMessage: 'Notes about people show up here. Tap + to write one.',
-        builder: (data) => ListView.separated(
-          padding: const EdgeInsets.only(bottom: 88),
-          itemCount: data.length,
-          separatorBuilder: (_, _) => const Divider(height: 1, indent: 66),
-          itemBuilder: (context, index) => _NoteRow(note: data[index]),
-        ),
+        builder: (data) {
+          final pending = _pendingRows(queue, data, resolve);
+          final rows = [
+            for (final e in pending.reversed)
+              (
+                note: e.note.copyWith(
+                  // A note about a person who is themselves still pending has
+                  // no directory row yet; the queue's placeholder stands in.
+                  person: directory
+                          .where((p) => p.id == resolve(e.personRef))
+                          .firstOrNull ??
+                      queue
+                          .whereType<PendingPerson>()
+                          .where((p) => p.tempId == e.personRef)
+                          .firstOrNull
+                          ?.placeholder,
+                ),
+                pending: e,
+              ),
+            for (final note in data) (note: note, pending: null),
+          ];
+          return ListView.separated(
+            padding: const EdgeInsets.only(bottom: 88),
+            itemCount: rows.length,
+            separatorBuilder: (_, _) => const Divider(height: 1, indent: 66),
+            itemBuilder: (context, index) => _NoteRow(
+              note: rows[index].note,
+              pending: rows[index].pending,
+            ),
+          );
+        },
       ),
     );
+  }
+
+  /// Every queued note, whoever it is about - the feed is not per person.
+  static List<PendingNote> _pendingRows(
+    List<PendingCreate> queue,
+    List<Note> shown,
+    String Function(String) resolve,
+  ) {
+    final ids = {for (final n in shown) n.noteId};
+    return [
+      for (final e in queue.whereType<PendingNote>())
+        if (!(e.isDone && ids.contains(e.result?.noteId))) e,
+    ];
   }
 }
 
 class _NoteRow extends StatelessWidget {
-  const _NoteRow({required this.note});
+  const _NoteRow({required this.note, this.pending});
 
   final Note note;
+
+  /// Set while the row is the queue's; the status line replaces the age.
+  final PendingNote? pending;
 
   @override
   Widget build(BuildContext context) {
@@ -85,6 +137,7 @@ class _NoteRow extends StatelessWidget {
     final person = note.person;
     final createdAt = note.createdAt;
     final category = note.category;
+    final pending = this.pending;
 
     return InkWell(
       // The web widget links each row to its author's detail page. A note whose
@@ -118,7 +171,9 @@ class _NoteRow extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (createdAt != null)
+                    if (pending != null && !pending.isDone)
+                      PendingStatusLine(entry: pending)
+                    else if (createdAt != null)
                       Text(
                         EventUtils.relative(createdAt),
                         style: TextStyle(

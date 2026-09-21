@@ -192,7 +192,9 @@ class _PersonPictureGalleryState extends ConsumerState<PersonPictureGallery> {
           // Hidden at the cap rather than letting the upload fail: the picker is
           // several taps, and losing them to a 409 at the end is worse than not
           // offering it. A racing second device still gets the message.
-          if ((pictures.asData?.value.length ?? 0) < maxPicturesPerPerson)
+          // `value`, not `asData`: a cache seed is loading-with-value, and `asData`
+          // is null for it - which would offer "Add picture" at the cap.
+          if ((pictures.value?.length ?? 0) < maxPicturesPerPerson)
             FilledButton.icon(
               onPressed: _busy ? null : _add,
               icon: const Icon(Icons.add_a_photo_outlined),

@@ -78,6 +78,10 @@ Future<void> _pump(
         sharedPreferencesProvider.overrideWithValue(prefs),
         allPeopleProvider.overrideWithBuild((ref, _) => _people),
         personTagsProvider.overrideWithBuild((ref, _) => const <PersonTag>[]),
+        allNotesProvider.overrideWithBuild((ref, _) => const <Note>[]),
+        allRelationshipsProvider.overrideWithBuild(
+          (ref, _) => const <Relationship>[],
+        ),
         personProvider.overrideWith(
           (ref, id) => _people.firstWhere((person) => person.id == id),
         ),

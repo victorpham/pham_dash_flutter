@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/cache/cached_list.dart';
 import '../../core/cache/freshness.dart';
+import '../../core/cache/preferences_storage.dart';
 import '../../core/providers.dart';
 import '../../core/sync/pending_writes.dart';
 import '../../data/models/todo_models.dart';
@@ -11,6 +12,38 @@ final showArchivedProvider = valueProvider<bool>(() => false);
 
 /// Null means "all labels".
 final labelFilterProvider = valueProvider<int?>(() => null);
+
+/// The lists shown in shopping-list order - see [TodoList.shoppingSorted].
+///
+/// Device-local, like the dark-mode switch and for the same reason: the API
+/// has no such field on a list, and `PUT /api/user-preferences` is a full
+/// replace this client must not issue (see `ThemeController`). One key holding
+/// every sorted list's id, rather than a key per list, so sign-out can drop
+/// them in one `remove` - the ids belong to whoever fetched them, and
+/// `PreferencesStorage.clearAll` does exactly that.
+final shoppingSortedListsProvider =
+    NotifierProvider<ShoppingSortedLists, Set<int>>(ShoppingSortedLists.new);
+
+class ShoppingSortedLists extends Notifier<Set<int>> {
+  @override
+  Set<int> build() {
+    final stored = ref
+        .watch(sharedPreferencesProvider)
+        .getStringList(PreferencesStorage.shoppingSortKey);
+    return {for (final id in stored ?? const <String>[]) int.parse(id)};
+  }
+
+  bool isOn(int listId) => state.contains(listId);
+
+  Future<void> set(int listId, bool on) async {
+    if (isOn(listId) == on) return;
+    state = on ? {...state, listId} : ({...state}..remove(listId));
+    await ref.read(sharedPreferencesProvider).setStringList(
+      PreferencesStorage.shoppingSortKey,
+      [for (final id in state) '$id'],
+    );
+  }
+}
 
 final todoListsProvider =
     AsyncNotifierProvider.autoDispose<TodoListsNotifier, List<TodoList>>(

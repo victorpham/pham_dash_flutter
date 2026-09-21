@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -12,22 +14,29 @@ import '../config/app_config.dart';
 /// re-fetching the person is what refreshes it. [AppConfig.mediaUrl] handles
 /// both the normal root-relative path and the legacy rows that stored a full
 /// absolute URL against an old host.
+///
+/// [localPath] wins over [storedPath]: it is the picture chosen for a person
+/// whose create is still on its way to the server (see `PendingCreates`), and
+/// there is no stored path to show until the upload that follows has run.
 class PersonAvatar extends StatelessWidget {
   const PersonAvatar({
     super.key,
     required this.storedPath,
     required this.initials,
+    this.localPath,
     this.size = 48,
   });
 
   final String? storedPath;
   final String initials;
+
+  /// A file on this phone, not yet uploaded.
+  final String? localPath;
   final double size;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final url = AppConfig.mediaUrl(storedPath);
 
     final placeholder = Container(
       width: size,
@@ -47,6 +56,19 @@ class PersonAvatar extends StatelessWidget {
       ),
     );
 
+    if (localPath case final path?) {
+      return ClipOval(
+        child: Image.file(
+          File(path),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => placeholder,
+        ),
+      );
+    }
+
+    final url = AppConfig.mediaUrl(storedPath);
     if (url == null) return placeholder;
 
     return ClipOval(

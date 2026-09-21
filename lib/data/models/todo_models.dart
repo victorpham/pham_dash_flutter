@@ -136,6 +136,20 @@ abstract class TodoList with _$TodoList {
         for (final group in groups) ...group.items,
       ];
 
+  /// This list in shopping-list order: unchecked items first, then checked,
+  /// each run alphabetical. Applied to the ungrouped items and to each group
+  /// separately - the same split the web feed's completed-last sort uses -
+  /// so an item never leaves its section. Presentation only; [items] and
+  /// [groups] keep the server's `displayOrder`, which is what a reorder
+  /// would still send.
+  TodoList get shoppingSorted => copyWith(
+        items: sortShopping(items),
+        groups: [
+          for (final group in groups)
+            group.copyWith(items: sortShopping(group.items)),
+        ],
+      );
+
   /// The full item ordering to send to `/todo/lists/{id}/items/reorder` after
   /// one section has been rearranged.
   ///
@@ -172,6 +186,16 @@ abstract class TodoList with _$TodoList {
     return days.contains(ApiDate.jsWeekday(day));
   }
 }
+
+/// [items] in shopping-list order: unchecked before checked, then by content
+/// ignoring case, then by `displayOrder` so equal names keep a stable order.
+/// Returns a new list; the input is left alone.
+List<TodoItem> sortShopping(List<TodoItem> items) => [...items]..sort((a, b) {
+      if (a.isCompleted != b.isCompleted) return a.isCompleted ? 1 : -1;
+      final byName = a.content.toLowerCase().compareTo(b.content.toLowerCase());
+      if (byName != 0) return byName;
+      return a.displayOrder.compareTo(b.displayOrder);
+    });
 
 /// Body for `POST /api/todo/lists`.
 @freezed

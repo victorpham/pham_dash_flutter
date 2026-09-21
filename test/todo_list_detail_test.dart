@@ -12,8 +12,10 @@ import 'package:pham_dash_flutter/core/providers.dart';
 import 'package:pham_dash_flutter/core/ui/async_view.dart';
 import 'package:pham_dash_flutter/data/models/todo_models.dart';
 import 'package:pham_dash_flutter/data/repositories/todo_repository.dart';
+import 'package:pham_dash_flutter/core/cache/preferences_storage.dart';
 import 'package:pham_dash_flutter/features/todo/todo_item_image.dart';
 import 'package:pham_dash_flutter/features/todo/todo_list_detail_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const _milk = TodoItem(
   id: 1,
@@ -176,9 +178,19 @@ Storage<String, String> _seededStore() {
   return store;
 }
 
+/// The device-local preferences, as [prefs] would have left them. The sort
+/// choice is the one thing this screen reads from them.
+Future<SharedPreferences> _prefs({bool shoppingSorted = false}) {
+  SharedPreferences.setMockInitialValues({
+    if (shoppingSorted) PreferencesStorage.shoppingSortKey: ['10'],
+  });
+  return SharedPreferences.getInstance();
+}
+
 Future<_FakeTodos> _pump(
   WidgetTester tester, {
   Storage<String, String>? storage,
+  SharedPreferences? prefs,
   Completer<void>? gate,
   Object? failWritesWith,
   bool settle = true,
@@ -193,6 +205,7 @@ Future<_FakeTodos> _pump(
       overrides: [
         todoRepositoryProvider.overrideWithValue(todos),
         cacheStorageProvider.overrideWithValue(storage ?? Storage.inMemory()),
+        sharedPreferencesProvider.overrideWithValue(prefs ?? await _prefs()),
       ],
       child: const MaterialApp(home: TodoListDetailScreen(listId: 10)),
     ),
@@ -209,6 +222,7 @@ void main() {
   _optimisticTests();
   _viewerTests();
   _locationAndGroupTests();
+  _shoppingSortTests();
 
   // CachedNetworkImage never gets to fetch anything under test, so the
   // assertions are on the thumbnail's wrapper key rather than on pixels.
@@ -257,6 +271,84 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(todos.removed, [1]);
+  });
+}
+
+/// The per-list sort mode. Device-local, so the assertions are on the rows
+/// and on `SharedPreferences` - the fake repository never hears about it.
+void _shoppingSortTests() {
+  /// Where a row sits, for asserting order without depending on widget keys.
+  double top(WidgetTester tester, String text) =>
+      tester.getTopLeft(find.text(text)).dy;
+
+  Future<void> pickSorting(WidgetTester tester, String option) async {
+    // The app bar's menu; the group header has one of its own.
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byType(PopupMenuButton<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sorting…'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(option));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('Sorting… → Shopping list sorts the rows, hides the handles '
+      'and remembers the list', (tester) async {
+    final prefs = await _prefs();
+    await _pump(tester, prefs: prefs);
+
+    // Server order: Milk above Eggs, with a drag handle on every row.
+    expect(top(tester, 'Milk'), lessThan(top(tester, 'Eggs')));
+    expect(find.byIcon(Icons.drag_handle), findsNWidgets(3));
+    expect(find.text('Shopping list'), findsNothing);
+
+    await pickSorting(tester, 'Shopping list');
+
+    expect(top(tester, 'Eggs'), lessThan(top(tester, 'Milk')));
+    expect(find.byIcon(Icons.drag_handle), findsNothing);
+    // The chip in the header.
+    expect(find.text('Shopping list'), findsOneWidget);
+    expect(prefs.getStringList(PreferencesStorage.shoppingSortKey), ['10']);
+  });
+
+  testWidgets('a remembered choice applies on open; Manual order undoes it',
+      (tester) async {
+    final prefs = await _prefs(shoppingSorted: true);
+    await _pump(tester, prefs: prefs);
+
+    expect(top(tester, 'Eggs'), lessThan(top(tester, 'Milk')));
+    expect(find.byIcon(Icons.drag_handle), findsNothing);
+
+    await pickSorting(tester, 'Manual order');
+
+    expect(top(tester, 'Milk'), lessThan(top(tester, 'Eggs')));
+    expect(find.byIcon(Icons.drag_handle), findsNWidgets(3));
+    expect(prefs.getStringList(PreferencesStorage.shoppingSortKey), isEmpty);
+  });
+
+  testWidgets('checking an item sinks it below the unchecked ones',
+      (tester) async {
+    await _pump(tester, prefs: await _prefs(shoppingSorted: true));
+    expect(top(tester, 'Eggs'), lessThan(top(tester, 'Milk')));
+
+    await tester.tap(find.text('Eggs'));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    expect(top(tester, 'Milk'), lessThan(top(tester, 'Eggs')));
+  });
+
+  testWidgets('grouped items sort within their group', (tester) async {
+    await _pump(tester, prefs: await _prefs(shoppingSorted: true));
+
+    // Bread would sort first overall, but it belongs to Bakery, which sits
+    // below the ungrouped items.
+    expect(top(tester, 'Milk'), lessThan(top(tester, 'Bread')));
+    expect(top(tester, 'Bakery'), lessThan(top(tester, 'Bread')));
   });
 }
 

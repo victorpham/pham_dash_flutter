@@ -1,9 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/experimental/persist.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pham_dash_flutter/core/api/api_client.dart';
 import 'package:pham_dash_flutter/core/auth/auth_service.dart';
 import 'package:pham_dash_flutter/core/providers.dart';
+import 'package:pham_dash_flutter/core/ui/async_view.dart';
 import 'package:pham_dash_flutter/data/models/people_models.dart';
 import 'package:pham_dash_flutter/data/repositories/people_repository.dart';
 import 'package:pham_dash_flutter/features/people/person_picture_gallery.dart';
@@ -35,11 +40,17 @@ class _RecordingPeople extends PeopleRepository {
 
   List<PersonPicture> stored;
 
+  /// When set, the gallery read waits on it - the database asleep.
+  Completer<void>? gate;
+
   int? primarySetTo;
   int? deleted;
 
   @override
-  Future<List<PersonPicture>> pictures(String personId) async => stored;
+  Future<List<PersonPicture>> pictures(String personId) async {
+    await gate?.future;
+    return stored;
+  }
 
   @override
   Future<List<PersonPicture>> setPrimaryPicture(
@@ -61,21 +72,32 @@ class _RecordingPeople extends PeopleRepository {
 Future<_RecordingPeople> _pumpGallery(
   WidgetTester tester, {
   List<PersonPicture>? pictures,
+  Storage<String, String>? storage,
+  Completer<void>? gate,
 }) async {
   final people = _RecordingPeople(
     ApiClient(AuthService()),
     pictures ?? _pictures(),
-  );
+  )..gate = gate;
 
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [peopleRepositoryProvider.overrideWithValue(people)],
+      overrides: [
+        peopleRepositoryProvider.overrideWithValue(people),
+        // The gallery is a CachedList now, and a real store needs
+        // SharedPreferences.
+        cacheStorageProvider.overrideWithValue(storage ?? Storage.inMemory()),
+      ],
       child: const MaterialApp(
         home: Scaffold(body: PersonPictureGallery(person: _person)),
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (gate == null) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
   return people;
 }
 
@@ -83,6 +105,8 @@ Finder _tile(int id) => find.byKey(ValueKey('picture-$id'));
 Finder _deleteButton(int id) => find.byKey(ValueKey('delete-picture-$id'));
 
 void main() {
+  _cacheTests();
+
   testWidgets('the displayed picture is the one badged', (tester) async {
     await _pumpGallery(tester);
 
@@ -163,5 +187,67 @@ void main() {
       find.textContaining('maximum of $maxPicturesPerPerson'),
       findsOneWidget,
     );
+  });
+}
+
+/// The per-person pictures cache: a gallery opened before is instant.
+void _cacheTests() {
+  testWidgets('a gallery opened before renders from its cache while the fetch '
+      'waits, then takes the fresh list', (tester) async {
+    final store = Storage<String, String>.inMemory();
+    store.write(
+      'pictures:${_person.id}',
+      jsonEncode([for (final p in _pictures()) p.toJson()]),
+      const StorageOptions(),
+    );
+    final gate = Completer<void>();
+    final people = await _pumpGallery(
+      tester,
+      storage: store,
+      gate: gate,
+      // The server has since lost picture 1.
+      pictures: _pictures().where((p) => p.id == 2).toList(),
+    );
+    await tester.pump();
+
+    expect(_tile(1), findsOneWidget);
+    expect(_tile(2), findsOneWidget);
+    expect(find.byType(RefreshingStrip), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    gate.complete();
+    await tester.pumpAndSettle();
+
+    expect(_tile(1), findsNothing);
+    expect(_tile(2), findsOneWidget);
+    expect(find.byType(RefreshingStrip), findsNothing);
+    // And the fresh list was written back for next time.
+    final written = (await store.read('pictures:${_person.id}'))!.data;
+    expect(written, contains('"id":2'));
+    expect(written, isNot(contains('"id":1')));
+    expect(people.stored.length, 1);
+  });
+
+  testWidgets('a cached gallery at the cap does not offer adding',
+      (tester) async {
+    final store = Storage<String, String>.inMemory();
+    store.write(
+      'pictures:${_person.id}',
+      jsonEncode([
+        for (var id = 1; id <= maxPicturesPerPerson; id++)
+          PersonPicture(id: id, personId: _person.id, isPrimary: id == 1)
+              .toJson(),
+      ]),
+      const StorageOptions(),
+    );
+    final gate = Completer<void>();
+    await _pumpGallery(tester, storage: store, gate: gate);
+    await tester.pump();
+
+    // A cache seed is loading-with-value; the cap check must see the value.
+    expect(find.text('Add picture'), findsNothing);
+
+    gate.complete();
+    await tester.pumpAndSettle();
   });
 }

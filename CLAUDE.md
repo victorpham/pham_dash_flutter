@@ -102,7 +102,7 @@ touch Dio, and repositories never touch Riverpod.
   meanwhile. `ServerWarmup` pings on app resume and `PatientLoading` explains
   the wait after 5 s. `GET /health` is deliberately dependency-free and wakes
   nothing - the ping is `GET /api/user-preferences`.
-- **The seven list providers behind a first screen are cached.** `CachedList`
+- **The nine list providers behind a first screen are cached.** `CachedList`
   (`lib/core/cache/`) uses Riverpod 3's *experimental* `persist` over a
   `SharedPreferences` `Storage`; a cold launch renders the last result under a
   thin bar while the fetch runs. `PreferencesStorage.delete` deliberately keeps
@@ -115,11 +115,24 @@ touch Dio, and repositories never touch Riverpod.
   person header pass the matching record from the lists / people cache as
   `AsyncView.fallback`, which renders it like a seed while the real fetch runs
   (`AsyncValue.copyWithPrevious` is `@internal`, so this is the public route).
-  Android backup is off (`allowBackup="false"`) so the cache never leaves the
-  device.
+  The person page's Relationships and Notes sections do the same inline
+  (`_SectionBody`) from two whole-table caches, `allNotesProvider` and
+  `allRelationshipsProvider` (`GET /api/notes`, `GET /api/relationships` —
+  added to the API for this; the per-person providers stay authoritative and
+  an API without those routes just degrades to the old spinner). Pictures are
+  a per-person `CachedList` family (`pictures:<id>`), no bulk route. The API
+  has no delta support, so "check for new data" is a full refetch:
+  `StaleRefresh` re-reads the four keep-alive directory caches on launch,
+  resume and People-list open when older than 15 min, chained behind
+  `ServerWarmup.ping()`. Android backup is off (`allowBackup="false"`) so the
+  cache never leaves the device.
 - **Preferences are read-only in this client.** `PUT /api/user-preferences` is a
   full replace that nulls omitted fields, so writing from here would wipe the web
-  app's theme. Dark mode is stored device-locally in `SharedPreferences`.
+  app's theme. Dark mode is stored device-locally in `SharedPreferences`, and so
+  is the per-list "shopping list" sort (`shoppingSortedListsProvider`, one key
+  holding the list ids, cleared on sign-out by `PreferencesStorage.clearAll`) —
+  the API has no sort field on a list, and the sort is presentation only:
+  `TodoList.shoppingSorted` never touches `displayOrder`.
 
 ### Routing
 
@@ -140,6 +153,23 @@ The one exception is `TodoListDetailNotifier` (and `TodoListsNotifier.togglePin`
 the shopping list is used while the database is asleep, so item writes patch
 state first, splice in the server's answer, and roll back on failure. Route new
 item writes through its methods and `_tryWrite`, not the repository.
+
+The three people-directory **creates** (person, note, relationship) go through
+`PendingCreates` (`lib/features/people/pending_creates.dart`) instead of the
+repository: the sheet closes at once and the record shows while the request runs.
+It is an *overlay*, not a cache patch — the per-person providers are plain
+`FutureProvider`s with nothing to patch — so every list that can show one of these
+merges the queue's entries in at render time (`pendingPeopleNotIn`,
+`pendingNotesFor`, `pendingRelationshipsFor`) and drops a `done` entry once the
+fetched list contains it. A new person has a `pending-<n>` id until the server
+answers (a hyphen never appears in a server id); `/people/pending-1` is a real
+route that renders the placeholder, and notes/relationships queued on that page
+wait for the person and take its real id. In memory only and cleared on sign-out
+(`sessionEndedProvider`): a create whose response was lost may have landed, so
+nothing is replayed on launch. Failures stay as "couldn't save" with Retry /
+Discard, and their count drives the red state of `SyncIndicator`
+(`PendingWrites.failed`). The write on the *edit* path, and every update/delete,
+still awaits the repository directly.
 
 ## Tests
 

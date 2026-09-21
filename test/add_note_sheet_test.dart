@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,12 +27,16 @@ class _RecordingNotes extends NotesRepository {
 
   ({String personId, String content, String? category})? created;
 
+  /// Holds the create open, the way a sleeping database does.
+  Completer<void>? gate;
+
   @override
   Future<Note?> create(
     String personId, {
     required String content,
     String? category,
   }) async {
+    await gate?.future;
     created = (personId: personId, content: content, category: category);
     return Note(noteId: 1, personId: personId, content: content);
   }
@@ -121,5 +127,47 @@ void main() {
 
     expect(find.text('Ha Pham'), findsOneWidget);
     expect(find.text('Who is this note about?'), findsNothing);
+  });
+
+  testWidgets('the sheet closes before the server has answered', (tester) async {
+    // A create held open, as the database wake holds every first request.
+    final gate = Completer<void>();
+    final notes = _fakeNotes()..gate = gate;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        retry: (_, _) => null,
+        overrides: [
+          allPeopleProvider.overrideWithBuild((ref, _) => _people),
+          notesRepositoryProvider.overrideWithValue(notes),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showAddNoteSheet(context, person: _people.first),
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, 'Lost a tooth');
+    await tester.pumpAndSettle();
+    await tester.tap(_saveButton());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+
+    // Gone, with the request still out.
+    expect(find.text('New note'), findsNothing);
+    expect(notes.created, isNull);
+
+    gate.complete();
+    await tester.pump();
+    expect(notes.created?.personId, 'a1');
   });
 }

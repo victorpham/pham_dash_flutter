@@ -9,7 +9,10 @@ import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/async_view.dart';
 import '../../core/ui/person_avatar.dart';
+import '../../core/ui/sync_indicator.dart';
 import '../../data/models/people_models.dart';
+import 'pending_creates.dart';
+import 'pending_status.dart';
 import 'people_filters_sheet.dart';
 import 'people_providers.dart';
 import 'person_edit_sheet.dart';
@@ -122,9 +125,13 @@ int _byName(Person a, Person b) {
 /// [comparePeopleByUpcomingBirthday].
 ///
 /// All client-side, over the single `GET /api/people` payload — there is no
-/// search endpoint.
+/// search endpoint. People whose create is still on its way (or has failed)
+/// are laid in from `PendingCreates` first, so the row appears the moment the
+/// sheet closes and stays until the directory re-read contains the real one.
 final filteredPeopleProvider = Provider.autoDispose<List<Person>>((ref) {
-  final people = ref.watch(allPeopleProvider).value ?? const <Person>[];
+  final directory = ref.watch(allPeopleProvider).value ?? const <Person>[];
+  final pending = pendingPeopleNotIn(ref.watch(pendingCreatesProvider), directory);
+  final people = [for (final e in pending) e.placeholder, ...directory];
   final search = ref.watch(_searchProvider).trim().toLowerCase();
   final missingBirthdateOnly = ref.watch(missingBirthdateFilterProvider);
   final missingPictureOnly = ref.watch(missingPictureFilterProvider);
@@ -150,11 +157,29 @@ const double _filtersHeight = 48;
 /// for anyone who has not made a tag yet.
 const double _filtersHeightWithTags = 102;
 
-class PeopleScreen extends ConsumerWidget {
+class PeopleScreen extends ConsumerStatefulWidget {
   const PeopleScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PeopleScreen> createState() => _PeopleScreenState();
+}
+
+class _PeopleScreenState extends ConsumerState<PeopleScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Opening the list is the "check for new data": the directory is
+    // keep-alive and would otherwise show its first answer all day. Silent
+    // by design - a refresh with a value is not a reload - and throttled, so
+    // flipping back and forth does not wake the database each time. No ping
+    // first: the user is looking at the list, the fetch itself is the wake.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(directoryRefreshProvider).refreshStale();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final people = ref.watch(allPeopleProvider);
     final hasTags =
         (ref.watch(personTagsProvider).value ?? const []).isNotEmpty;
@@ -163,6 +188,8 @@ class PeopleScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('People'),
         actions: [
+          // Red once a queued create has failed, wherever the user has got to.
+          SyncIndicator(onFailedTap: () => showFailedChangesSheet(context)),
           // Only offered when something is actually being hidden, so it never
           // reads as a button that does nothing.
           if (ref.watch(_isFilteredProvider))
@@ -213,6 +240,10 @@ class PeopleScreen extends ConsumerWidget {
           value: people,
           updatedAt: freshnessOf(ref, 'people'),
           onRetry: () => ref.invalidate(allPeopleProvider),
+          // A directory with nobody in it yet, and one person on their way,
+          // is a list of one - not the empty state.
+          isEmpty: (data) =>
+              data.isEmpty && ref.watch(filteredPeopleProvider).isEmpty,
           emptyIcon: Icons.people_outline,
           emptyTitle: 'No people yet',
           emptyMessage: 'Add the first one with the button below.',
@@ -403,6 +434,17 @@ class _PersonRow extends ConsumerWidget {
     // *why* they are up there. Three signals, because one pill is easy to skim
     // past: a tinted row, a cake on the avatar, and a filled pill.
     final isBirthday = daysUntil == 0;
+    // The queue entry behind a placeholder row, or null for a fetched person.
+    final pending = isPendingPersonId(person.id)
+        ? ref.watch(
+            pendingCreatesProvider.select(
+              (queue) => queue
+                  .whereType<PendingPerson>()
+                  .where((e) => e.tempId == person.id)
+                  .firstOrNull,
+            ),
+          )
+        : null;
 
     return ListTile(
       tileColor: isBirthday ? scheme.primary.withValues(alpha: 0.09) : null,
@@ -414,6 +456,7 @@ class _PersonRow extends ConsumerWidget {
           children: [
             PersonAvatar(
               storedPath: person.profilePictureUrl,
+              localPath: pending?.picturePath,
               initials: person.initials,
               size: 44,
             ),
@@ -456,33 +499,40 @@ class _PersonRow extends ConsumerWidget {
             _CountdownPill(text: countdown, isToday: isBirthday),
         ],
       ),
-      subtitle: Text(
-        [
-          if (person.vietnameseName case final vietnamese?
-              when vietnamese.isNotEmpty)
-            vietnamese,
-          if (birthDate == null)
-            'No birthday'
-          else
-            [
-              DateFormat('MMM d').format(birthDate),
-              // `age` has already rolled over by the time the day arrives, so
-              // on a birthday it is the age being turned.
-              if (age != null) isBirthday ? 'turns $age today' : '$age',
-            ].join(' · '),
-        ].join(' · '),
-        style: TextStyle(fontSize: 12.5, color: scheme.mutedForeground),
-      ),
-      trailing: PopupMenuButton<String>(
-        onSelected: (action) => switch (action) {
-          'edit' => showPersonEditSheet(context, person: person),
-          _ => _delete(context, ref),
-        },
-        itemBuilder: (context) => const [
-          PopupMenuItem(value: 'edit', child: Text('Edit')),
-          PopupMenuItem(value: 'delete', child: Text('Delete')),
-        ],
-      ),
+      subtitle: pending != null && !pending.isDone
+          ? PendingStatusLine(entry: pending)
+          : Text(
+              [
+                if (person.vietnameseName case final vietnamese?
+                    when vietnamese.isNotEmpty)
+                  vietnamese,
+                if (birthDate == null)
+                  'No birthday'
+                else
+                  [
+                    DateFormat('MMM d').format(birthDate),
+                    // `age` has already rolled over by the time the day
+                    // arrives, so on a birthday it is the age being turned.
+                    if (age != null) isBirthday ? 'turns $age today' : '$age',
+                  ].join(' · '),
+              ].join(' · '),
+              style: TextStyle(fontSize: 12.5, color: scheme.mutedForeground),
+            ),
+      // No menu until the person exists server-side: there is nothing to edit
+      // or delete yet, and the status line carries Retry and Discard.
+      trailing: pending != null
+          ? null
+          : PopupMenuButton<String>(
+              onSelected: (action) => switch (action) {
+                'edit' => showPersonEditSheet(context, person: person),
+                _ => _delete(context, ref),
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(value: 'edit', child: Text('Edit')),
+                PopupMenuItem(value: 'delete', child: Text('Delete')),
+              ],
+            ),
+      // A pending id is a real route: the page renders the placeholder.
       onTap: () => context.push('/people/${person.id}'),
     );
   }

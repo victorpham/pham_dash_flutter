@@ -11,6 +11,7 @@ import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/person_avatar.dart';
 import '../../data/models/people_models.dart';
+import 'pending_creates.dart';
 import 'people_providers.dart';
 import 'person_picture_gallery.dart';
 import 'person_tags_sheet.dart';
@@ -21,10 +22,13 @@ const int _maxPictureBytes = 5 * 1024 * 1024;
 
 /// Create or edit a person, returning the saved [Person] or null if cancelled.
 ///
-/// Pass [person] to edit, omit it to create. A picture chosen while creating is
-/// uploaded *after* the person exists — the upload endpoint is keyed by id, so
-/// there is nowhere to put it before then. That is the same create → upload →
-/// re-fetch sequence the web dialog runs.
+/// Pass [person] to edit, omit it to create. Editing awaits the server; creating
+/// does not - the sheet hands the draft to `PendingCreates` and returns its
+/// placeholder at once, under a `pending-<n>` id the caller can navigate to.
+/// A picture chosen while creating is uploaded *after* the person exists — the
+/// upload endpoint is keyed by id, so there is nowhere to put it before then.
+/// That is the same create → upload → re-fetch sequence the web dialog runs,
+/// moved off the sheet.
 Future<Person?> showPersonEditSheet(
   BuildContext context, {
   Person? person,
@@ -311,44 +315,55 @@ class _PersonEditSheetState extends ConsumerState<PersonEditSheet> {
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    setState(() => _saving = true);
 
-    final repository = ref.read(peopleRepositoryProvider);
     final vietnameseName = _vietnameseName.text.trim();
     final homeAddress = _homeAddress.text.trim();
 
+    if (!_isEdit) {
+      // Queued, not awaited. The create, the tag attaches and the picture
+      // upload run in `PendingCreates` in the same order they used to run
+      // here, and the sheet closes now: after an hour idle the database takes
+      // tens of seconds to answer, and there is nothing for the user to do on
+      // this sheet while it does. The caller opens the placeholder's page.
+      final picture = _pendingPicture;
+      final placeholder = ref.read(pendingCreatesProvider.notifier).addPerson(
+            firstName: _firstName.text.trim(),
+            lastName: _lastName.text.trim(),
+            vietnameseName: vietnameseName.isEmpty ? null : vietnameseName,
+            homeAddress: homeAddress.isEmpty ? null : homeAddress,
+            birthDate: _birthDate,
+            tagIds: _tagIds,
+            picturePath: picture?.path,
+            pictureName: picture?.name,
+          );
+      Navigator.of(context).pop(placeholder);
+      return;
+    }
+
+    setState(() => _saving = true);
+    final repository = ref.read(peopleRepositoryProvider);
+
     try {
-      var saved = _isEdit
-          ? await repository.update(
-              widget.person!.id,
-              firstName: _firstName.text.trim(),
-              lastName: _lastName.text.trim(),
-              vietnameseName: vietnameseName.isEmpty ? null : vietnameseName,
-              homeAddress: homeAddress.isEmpty ? null : homeAddress,
-              birthDate: _birthDate,
-            )
-          : await repository.create(
-              firstName: _firstName.text.trim(),
-              lastName: _lastName.text.trim(),
-              vietnameseName: vietnameseName.isEmpty ? null : vietnameseName,
-              homeAddress: homeAddress.isEmpty ? null : homeAddress,
-              birthDate: _birthDate,
-            );
+      var saved = await repository.update(
+        widget.person!.id,
+        firstName: _firstName.text.trim(),
+        lastName: _lastName.text.trim(),
+        vietnameseName: vietnameseName.isEmpty ? null : vietnameseName,
+        homeAddress: homeAddress.isEmpty ? null : homeAddress,
+        birthDate: _birthDate,
+      );
 
       if (saved != null) {
-        // A diff, not a replace: on edit only the changes go over the wire, and
-        // on create `original` is empty so everything ticked is an attach. Like
-        // the picture upload below, there is nowhere to put these until the
-        // person has an id — which is why it happens here and not in the write
-        // above. Cheap JSON calls first, so a slow multi-megabyte upload does
-        // not delay the chips appearing.
+        // A diff, not a replace: only the changes go over the wire. Nothing is
+        // sent before the person write, because a failed update should not
+        // leave the tags changed. Cheap JSON calls first, so a slow
+        // multi-megabyte upload does not delay the chips appearing.
         //
-        // A failure here throws into the catch below and leaves a created but
-        // partially tagged person. That is knowingly the same trade the picture
-        // upload has always made: the person exists, the sheet toasts, and the
-        // user finishes from the detail page.
-        final original =
-            widget.person?.tags.map((tag) => tag.id).toSet() ?? const <int>{};
+        // A failure here throws into the catch below and leaves an updated but
+        // partially re-tagged person. That is knowingly the same trade the
+        // picture upload has always made: the sheet toasts, and the user
+        // finishes from the detail page.
+        final original = widget.person!.tags.map((tag) => tag.id).toSet();
         final tags = ref.read(personTagsRepositoryProvider);
         for (final tagId in _tagIds.difference(original)) {
           await tags.attach(saved.id, tagId);

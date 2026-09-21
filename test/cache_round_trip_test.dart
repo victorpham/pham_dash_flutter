@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pham_dash_flutter/core/cache/cached_list.dart';
 import 'package:pham_dash_flutter/data/models/calendar_models.dart';
+import 'package:pham_dash_flutter/data/models/converters.dart';
 import 'package:pham_dash_flutter/data/models/people_models.dart';
 import 'package:pham_dash_flutter/data/models/todo_models.dart';
 
@@ -63,6 +64,49 @@ void main() {
       person: person,
     );
     expect(roundTrip([note], (n) => n.toJson(), Note.fromJson), [note]);
+  });
+
+  test('the bulk notes list, without an author', () {
+    // `/api/notes` leaves `person` null; the same `fromJson` must read it.
+    final note = Note(
+      noteId: 8,
+      personId: 'p1',
+      content: '**Bold** plans.',
+      createdAt: DateTime.utc(2026, 9, 1, 8).toLocal(),
+    );
+    expect(roundTrip([note], (n) => n.toJson(), Note.fromJson), [note]);
+  });
+
+  test('relationships keep their integer type and both date kinds', () {
+    final relationship = Relationship(
+      relationshipId: 12,
+      personId: 'p1',
+      relatedPersonId: 'p2',
+      type: RelationshipType.sibling,
+      createdAt: DateTime.utc(2026, 3, 3, 3).toLocal(),
+      relatedPersonFirstName: 'Ha',
+      relatedPersonLastName: 'Pham',
+      relatedPersonBirthDate: DateTime(1988, 2, 29),
+      relatedPersonProfilePictureUrl: '/uploads/p2.jpg?exp=1&sig=def',
+    );
+    expect(
+      roundTrip([relationship], (r) => r.toJson(), Relationship.fromJson),
+      [relationship],
+    );
+  });
+
+  test('person pictures', () {
+    final picture = PersonPicture(
+      id: 4,
+      personId: 'p1',
+      profilePictureUrl: '/uploads/p1_004.jpg?exp=1&sig=ghi',
+      isPrimary: true,
+      uploadedAt: DateTime.utc(2026, 8, 8, 8).toLocal(),
+    );
+    expect(
+      roundTrip([picture], (p) => p.toJson(), PersonPicture.fromJson),
+      [picture],
+    );
   });
 
   test('schedule events keep their wall-clock times', () {

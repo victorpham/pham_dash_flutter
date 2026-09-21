@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +8,7 @@ import '../../core/providers.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/ui/sync_indicator.dart';
 import '../notes/recent_notes_tab.dart';
+import '../people/people_providers.dart';
 import '../schedule/schedule_tab.dart';
 import '../todo/todo_lists_tab.dart';
 import '../weather/weather_tab.dart';
@@ -101,17 +104,28 @@ class _DashboardShellState extends ConsumerState<DashboardShell> {
     // Coming back after an hour away, every tab still shows what it loaded
     // last time and nothing refetches - so the first tap that does reach the
     // API pays the whole database resume. Ping on resume so the wake starts
-    // now instead; see `ServerWarmup`. Launch needs no ping of its own: the
-    // Schedule tab's first fetch is one.
+    // now instead; see `ServerWarmup`. Behind the ping, once the database is
+    // answering, the directory caches that seed person pages are re-read if
+    // they have gone stale - and that is why launch warms up too, where the
+    // Schedule tab's first fetch used to be ping enough: a person opened
+    // straight from the dashboard should find notes and relationships that
+    // are not a day old.
     _lifecycle = AppLifecycleListener(onResume: _warmUp);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _warmUp());
   }
 
   void _warmUp() {
     // The shell only mounts behind the router's auth redirect, but a ping
     // with no session would 401, fail the refresh, and emit `sessionExpired`
     // - so never send one without a user.
-    if (ref.read(authControllerProvider).value == null) return;
-    ref.read(serverWarmupProvider).ping();
+    if (!mounted || ref.read(authControllerProvider).value == null) return;
+    // `ping` never throws, and inside its window it completes at once, so a
+    // resume shortly after launch goes straight to the (throttled) check.
+    unawaited(
+      ref.read(serverWarmupProvider).ping().then((_) {
+        if (mounted) ref.read(directoryRefreshProvider).refreshStale();
+      }),
+    );
   }
 
   @override

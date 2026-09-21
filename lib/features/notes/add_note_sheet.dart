@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/api/api_exception.dart';
-import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/ui/person_avatar.dart';
 import '../../core/ui/person_picker.dart';
 import '../../data/models/people_models.dart';
+import '../people/pending_creates.dart';
 import '../people/people_providers.dart';
-import 'recent_notes_tab.dart';
 
 /// Writes a note from the dashboard, where no person is implied yet.
 ///
@@ -44,10 +42,9 @@ class _AddNoteSheetState extends ConsumerState<AddNoteSheet> {
   final _category = TextEditingController();
 
   late Person? _person = widget.person;
-  bool _saving = false;
 
   bool get _canSave =>
-      !_saving && _person != null && _content.text.trim().isNotEmpty;
+      _person != null && _content.text.trim().isNotEmpty;
 
   @override
   void dispose() {
@@ -89,7 +86,7 @@ class _AddNoteSheetState extends ConsumerState<AddNoteSheet> {
               borderRadius: BorderRadius.circular(12),
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
-                onTap: _saving ? null : _pickPerson,
+                onTap: _pickPerson,
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Row(
@@ -173,13 +170,7 @@ class _AddNoteSheetState extends ConsumerState<AddNoteSheet> {
 
             FilledButton(
               onPressed: _canSave ? _save : null,
-              child: _saving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Save note'),
+              child: const Text('Save note'),
             ),
           ],
         ),
@@ -188,7 +179,10 @@ class _AddNoteSheetState extends ConsumerState<AddNoteSheet> {
   }
 
   Future<void> _pickPerson() async {
-    final people = await ref.read(allPeopleProvider.future);
+    // The cached directory does for a picker; `.future` alone would wait on
+    // the database wake.
+    final List<Person> people = ref.read(allPeopleProvider).value ??
+        await ref.read(allPeopleProvider.future);
     if (!mounted) return;
 
     final selected = await pickPerson(
@@ -199,31 +193,21 @@ class _AddNoteSheetState extends ConsumerState<AddNoteSheet> {
     if (selected != null) setState(() => _person = selected);
   }
 
-  Future<void> _save() async {
+  /// Queued, not awaited: the sheet closes now and the note shows at the top
+  /// of the feed while `PendingCreates` posts it and re-reads the lists. After
+  /// an hour idle the post is a database wake away, and there is nothing to
+  /// do on this sheet meanwhile.
+  void _save() {
     final person = _person;
     if (person == null) return;
 
-    setState(() => _saving = true);
     final category = _category.text.trim();
-
-    try {
-      await ref.read(notesRepositoryProvider).create(
-            person.id,
-            content: _content.text.trim(),
-            category: category.isEmpty ? null : category,
-          );
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() => _saving = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.message)));
-      return;
-    }
-
-    ref.invalidate(recentNotesProvider);
-    // That person's own page is a note behind now too.
-    ref.invalidate(personNotesProvider(person.id));
-
-    if (mounted) Navigator.of(context).pop(true);
+    ref.read(pendingCreatesProvider.notifier).addNote(
+          person.id,
+          content: _content.text.trim(),
+          category: category.isEmpty ? null : category,
+          personName: person.firstName,
+        );
+    Navigator.of(context).pop(true);
   }
 }

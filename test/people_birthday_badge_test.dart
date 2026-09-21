@@ -35,6 +35,10 @@ Future<void> _pumpPeople(WidgetTester tester, List<Person> people) async {
       // PeopleScreen sizes its app bar on the tag vocabulary, so it has to be
       // stubbed or the screen reaches for the network.
       personTagsProvider.overrideWithBuild((ref, _) => const <PersonTag>[]),
+      allNotesProvider.overrideWithBuild((ref, _) => const <Note>[]),
+      allRelationshipsProvider.overrideWithBuild(
+        (ref, _) => const <Relationship>[],
+      ),
     ],
   );
   addTearDown(container.dispose);

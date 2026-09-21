@@ -66,6 +66,7 @@ class TodoListDetailScreen extends ConsumerWidget {
                   child: Text('Link person…'),
                 ),
                 const PopupMenuItem(value: 'labels', child: Text('Labels…')),
+                const PopupMenuItem(value: 'sorting', child: Text('Sorting…')),
                 const PopupMenuItem(value: 'group', child: Text('Add group')),
                 const PopupMenuItem(value: 'reset', child: Text('Reset items')),
                 PopupMenuItem(
@@ -87,7 +88,7 @@ class TodoListDetailScreen extends ConsumerWidget {
         // Own fetch once it has landed; the Lists tab's until then, since
         // that is whose copy is on screen.
         updatedAt: list.hasValue
-            ? freshnessOf(ref, 'todo_list:')
+            ? freshnessOf(ref, 'todo_list:$listId')
             : freshnessOf(ref, 'todo_lists'),
         onRetry: () => ref.invalidate(todoListDetailProvider(listId)),
         isEmpty: (data) => data == null,
@@ -139,6 +140,12 @@ class TodoListDetailScreen extends ConsumerWidget {
         ref.invalidate(todoListDetailProvider(listId));
         ref.invalidate(todoListsProvider);
         ref.invalidate(todoLabelsProvider);
+        return;
+
+      case 'sorting':
+        // Device-local: nothing server-side changes, so nothing to re-read.
+        if (!context.mounted) return;
+        await _editSorting(context, ref);
         return;
 
       case 'group':
@@ -314,6 +321,62 @@ class TodoListDetailScreen extends ConsumerWidget {
     ref.invalidate(todoListDetailProvider(listId));
     ref.invalidate(todoListsProvider);
   }
+
+  /// Manual order or shopping-list order, as two radios. The choice is kept on
+  /// this device only - see [shoppingSortedListsProvider].
+  Future<void> _editSorting(BuildContext context, WidgetRef ref) async {
+    final current = ref.read(shoppingSortedListsProvider.notifier).isOn(listId);
+    final picked = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Sorting',
+                style: Theme.of(context).textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              RadioGroup<bool>(
+                groupValue: current,
+                // Toggleable so re-picking the current mode still reports
+                // (as null) and closes the sheet instead of ignoring the tap.
+                onChanged: (value) => Navigator.of(context).pop(value),
+                child: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<bool>(
+                      value: false,
+                      toggleable: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Manual order'),
+                      subtitle: Text('Drag items into the order you want.'),
+                    ),
+                    RadioListTile<bool>(
+                      value: true,
+                      toggleable: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Shopping list'),
+                      subtitle: Text(
+                        'Alphabetical; checked items sink to the bottom.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null) return;
+    await ref.read(shoppingSortedListsProvider.notifier).set(listId, picked);
+  }
 }
 
 class _ListBody extends ConsumerWidget {
@@ -324,25 +387,37 @@ class _ListBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final sorted = ref.watch(
+      shoppingSortedListsProvider.select((ids) => ids.contains(list.id)),
+    );
+    // Sorted for display only; [list] keeps the server's order for the
+    // reorder payload. A checked item moves down on the next frame, since the
+    // optimistic toggle rebuilds the list and this re-sorts it - the web feed
+    // waits 700 ms before re-sorting, which is not copied here.
+    final shown = sorted ? list.shoppingSorted : list;
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 88),
       children: [
-        _Attributes(list: list),
+        _Attributes(list: list, sorted: sorted),
 
         // Ungrouped items, then each group — the split the API returns.
         _ItemSection(
           list: list,
-          items: list.items,
+          items: shown.items,
+          sorted: sorted,
           onReorder: (ordering) => _reorder(context, ref, ungrouped: ordering),
         ),
 
-        for (final group in list.groups) ...[
+        // The header takes the unsorted group: it finds its own position by
+        // equality, and a sorted copy would not match.
+        for (final (index, group) in list.groups.indexed) ...[
           _GroupHeader(list: list, group: group),
           _ItemSection(
             list: list,
-            items: group.items,
+            items: shown.groups[index].items,
             inGroup: true,
+            sorted: sorted,
             onReorder: (ordering) =>
                 _reorder(context, ref, groupOrderings: {group.id: ordering}),
           ),
@@ -387,11 +462,15 @@ class _ListBody extends ConsumerWidget {
   }
 }
 
-/// The list's colour, person and labels, each a tap away from its editor.
+/// The list's schedule, person, sort mode and labels, each a tap away from
+/// its editor.
 class _Attributes extends ConsumerWidget {
-  const _Attributes({required this.list});
+  const _Attributes({required this.list, required this.sorted});
 
   final TodoList list;
+
+  /// Shown as a chip, so the mode is visible without opening the menu.
+  final bool sorted;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -399,6 +478,7 @@ class _Attributes extends ConsumerWidget {
     final hasAny =
         list.scheduledTime != null ||
         list.personName != null ||
+        sorted ||
         list.labels.isNotEmpty;
     if (!hasAny) return const SizedBox(height: 8);
 
@@ -413,6 +493,8 @@ class _Attributes extends ConsumerWidget {
             _Meta(icon: Icons.schedule, text: _scheduleSummary(list)),
           if (list.personName case final person?)
             _Meta(icon: Icons.person_outline, text: person),
+          if (sorted)
+            const _Meta(icon: Icons.sort_by_alpha, text: 'Shopping list'),
           for (final label in list.labels)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -560,11 +642,17 @@ class _ItemSection extends ConsumerStatefulWidget {
     required this.items,
     required this.onReorder,
     this.inGroup = false,
+    this.sorted = false,
   });
 
   final TodoList list;
   final List<TodoItem> items;
   final bool inGroup;
+
+  /// Shopping-list order. The rows lose their drag handles, so [onReorder]
+  /// cannot fire - a drag would only have written the sorted order into the
+  /// server's `displayOrder`.
+  final bool sorted;
   final Future<void> Function(List<int> ordering) onReorder;
 
   @override
@@ -599,6 +687,7 @@ class _ItemSectionState extends ConsumerState<_ItemSection> {
         item: _items[index],
         index: index,
         inGroup: widget.inGroup,
+        sorted: widget.sorted,
         groups: widget.list.groups,
       ),
       // `onReorderItem` hands over a newIndex already adjusted for the removal,
@@ -622,6 +711,7 @@ class _ItemRow extends ConsumerWidget {
     required this.item,
     required this.index,
     this.inGroup = false,
+    this.sorted = false,
     this.groups = const [],
   });
 
@@ -629,6 +719,9 @@ class _ItemRow extends ConsumerWidget {
   final TodoItem item;
   final int index;
   final bool inGroup;
+
+  /// Hides the drag handle and the indent buttons: the order is derived.
+  final bool sorted;
 
   /// The list's groups, for **Move to group…**. Empty hides that action.
   final List<TodoItemGroup> groups;
@@ -926,7 +1019,9 @@ class _ItemRow extends ConsumerWidget {
                 ),
               ),
               // Indent is capped at 2, and the first item cannot be indented.
-              if (!_isPlaceholder && item.indentLevel < 2 && index > 0)
+              // Nothing to indent under in a sorted list either: a sub-item
+              // would be sorted away from its parent.
+              if (!_isPlaceholder && !sorted && item.indentLevel < 2 && index > 0)
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   tooltip: 'Indent',
@@ -939,7 +1034,7 @@ class _ItemRow extends ConsumerWidget {
                     ),
                   ),
                 ),
-              if (!_isPlaceholder && item.indentLevel > 0)
+              if (!_isPlaceholder && !sorted && item.indentLevel > 0)
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   tooltip: 'Outdent',
@@ -952,17 +1047,21 @@ class _ItemRow extends ConsumerWidget {
                     ),
                   ),
                 ),
-              ReorderableDragStartListener(
-                index: index,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Icon(
-                    Icons.drag_handle,
-                    size: 20,
-                    color: scheme.outline,
+              if (sorted)
+                // Keeps the text column the same width as the unsorted row.
+                const SizedBox(width: 12)
+              else
+                ReorderableDragStartListener(
+                  index: index,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Icon(
+                      Icons.drag_handle,
+                      size: 20,
+                      color: scheme.outline,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
