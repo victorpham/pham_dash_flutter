@@ -9,6 +9,7 @@ import '../data/repositories/weather_repository.dart';
 import 'api/api_client.dart';
 import 'api/server_warmup.dart';
 import 'auth/auth_service.dart';
+import 'cache/cache_log.dart';
 import 'cache/preferences_storage.dart';
 
 /// Overridden in `main()` once `SharedPreferences` has loaded, so the rest of
@@ -68,7 +69,10 @@ final serverWarmupProvider = Provider(
 /// Where `CachedList` notifiers keep their last result. Typed as the abstract
 /// [Storage] so tests override it with `Storage.inMemory()`.
 final cacheStorageProvider = Provider<Storage<String, String>>(
-  (ref) => PreferencesStorage(ref.watch(sharedPreferencesProvider)),
+  (ref) => PreferencesStorage(
+    ref.watch(sharedPreferencesProvider),
+    log: ref.watch(cacheLogProvider),
+  ),
 );
 
 /// Weather is not a PhamDash feature: this one talks to weather.gov and
@@ -87,18 +91,22 @@ class AuthController extends AsyncNotifier<AuthUser?> {
     final subscription =
         ref.watch(apiClientProvider).sessionExpired.listen((_) {
       state = const AsyncData(null);
-      _clearCache();
+      _endSession();
     });
     ref.onDispose(subscription.cancel);
 
-    return ref.watch(authServiceProvider).restore();
+    final user = await ref.watch(authServiceProvider).restore();
+    if (user != null) await _claim(user);
+    return user;
   }
 
   Future<void> signIn() async {
     state = const AsyncLoading();
-    state = await AsyncValue.guard(
-      () => ref.read(authServiceProvider).signIn(),
-    );
+    state = await AsyncValue.guard(() async {
+      final user = await ref.read(authServiceProvider).signIn();
+      await _claim(user);
+      return user;
+    });
   }
 
   Future<void> signOut() async {
@@ -107,11 +115,41 @@ class AuthController extends AsyncNotifier<AuthUser?> {
     await _clearCache();
   }
 
-  /// Cached lists belong to the session that fetched them: todo lists are
-  /// per-user, and the next person to sign in here must not open to them.
+  /// Hands the cache to [user], clearing it first if it was somebody else's.
+  ///
+  /// Doing this on sign-*in* is what lets a session that merely expired keep
+  /// its saved copy while still guaranteeing that the next person to sign in on
+  /// this phone never sees the last one's todo lists - see
+  /// [PreferencesStorage.claimFor].
+  Future<void> _claim(AuthUser user) => PreferencesStorage.claimFor(
+        ref.read(sharedPreferencesProvider),
+        user.id,
+        log: ref.read(cacheLogProvider),
+      );
+
+  /// A session that ended without the user asking.
+  ///
+  /// Drops in-memory session state - the queue of people writes still on their
+  /// way - but **keeps the cache**. A forced expiry is almost always the same
+  /// user whose token lapsed, and the failure that causes it (a 401 the retry
+  /// could not clear) tends to arrive exactly when the network is unreliable
+  /// and the saved copy is the only thing the app can still show. If somebody
+  /// else does sign in next, [_claim] clears it before they see anything.
+  void _endSession() {
+    ref.read(sessionEndedProvider.notifier).bump();
+    ref
+        .read(cacheLogProvider)
+        .record(CacheEventKind.sessionExpired, '*', detail: 'cache kept');
+  }
+
+  /// A deliberate sign-out: the phone is being handed over, so the cached
+  /// lists - which are per-user - go now rather than at the next sign-in.
   Future<void> _clearCache() {
     ref.read(sessionEndedProvider.notifier).bump();
-    return PreferencesStorage.clearAll(ref.read(sharedPreferencesProvider));
+    return PreferencesStorage.clearAll(
+      ref.read(sharedPreferencesProvider),
+      log: ref.read(cacheLogProvider),
+    );
   }
 }
 

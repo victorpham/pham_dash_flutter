@@ -24,15 +24,11 @@ class UpcomingEventsNotifier extends AsyncNotifier<List<CalendarEvent>>
   Future<List<CalendarEvent>> build() async {
     final today = ApiDate.startOfDay(DateTime.now());
 
-    // The cached window started on whatever day it was fetched. Anything that
-    // ended before today would otherwise sit under a stale "Today" header
-    // until the refresh lands.
     persistList(
       'schedule',
       fromJson: CalendarEvent.fromJson,
       toJson: (event) => event.toJson(),
-      trim: (events) =>
-          events.where((e) => !e.end.isBefore(today)).toList(growable: false),
+      trim: _fromToday,
     );
 
     final events = await ref.watch(calendarRepositoryProvider).events(
@@ -42,6 +38,17 @@ class UpcomingEventsNotifier extends AsyncNotifier<List<CalendarEvent>>
         );
     return EventUtils.hideTuMeetings(events);
   }
+}
+
+/// Drops events that ended before today.
+///
+/// The cached window started on whatever day it was fetched. Anything that
+/// ended before today would otherwise sit under a stale "Today" header until
+/// the refresh lands. Shared by the seed and by the fallback below, which have
+/// to agree or the two would render differently.
+List<CalendarEvent> _fromToday(List<CalendarEvent> events) {
+  final today = ApiDate.startOfDay(DateTime.now());
+  return events.where((e) => !e.end.isBefore(today)).toList(growable: false);
 }
 
 class ScheduleTab extends ConsumerWidget {
@@ -55,6 +62,17 @@ class ScheduleTab extends ConsumerWidget {
       onRefresh: () => ref.refresh(upcomingEventsProvider.future),
       child: AsyncView<List<CalendarEvent>>(
         value: events,
+        // The saved copy for every build that is not the element's first one,
+        // which is the only one `CachedList` seeds. Same `trim` as the seed,
+        // or yesterday's events would come back under a "Today" header.
+        fallback: events.hasValue
+            ? null
+            : cachedSeedOf(
+                ref,
+                'schedule',
+                CalendarEvent.fromJson,
+                trim: _fromToday,
+              ),
         updatedAt: freshnessOf(ref, 'schedule'),
         onRetry: () => ref.invalidate(upcomingEventsProvider),
         emptyIcon: Icons.event_available_outlined,

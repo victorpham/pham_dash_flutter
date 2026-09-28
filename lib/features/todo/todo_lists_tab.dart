@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_exception.dart';
+import '../../core/cache/cached_list.dart';
 import '../../core/cache/freshness.dart';
 import '../../core/providers.dart';
 import '../../core/theme/app_theme.dart';
@@ -30,10 +31,22 @@ class TodoListsTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final lists = ref.watch(todoListsProvider);
 
+    // `CachedList` seeds the provider only at its element's first build, and
+    // only on the unfiltered branch. Every other way this tab can arrive with
+    // nothing - an invalidate after a write on the detail screen, a filter
+    // cleared, a first mount that happened while a filter was on - would
+    // otherwise be a bare spinner for the length of a database wake. Under a
+    // filter the saved copy is the wrong answer, so it stays out of the way.
+    final unfiltered = !ref.watch(showArchivedProvider) &&
+        ref.watch(labelFilterProvider) == null;
+
     return RefreshIndicator(
       onRefresh: () => ref.refresh(todoListsProvider.future),
       child: AsyncView<List<TodoList>>(
         value: lists,
+        fallback: lists.hasValue || !unfiltered
+            ? null
+            : cachedSeedOf(ref, 'todo_lists', TodoList.fromJson),
         updatedAt: freshnessOf(ref, 'todo_lists'),
         onRetry: () => ref.invalidate(todoListsProvider),
         emptyIcon: Icons.checklist,

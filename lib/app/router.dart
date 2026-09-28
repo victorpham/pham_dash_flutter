@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../core/providers.dart';
 import '../features/calendar/calendar_screen.dart';
+import '../features/dashboard/cache_diagnostics_screen.dart';
 import '../features/dashboard/dashboard_shell.dart';
 import '../features/login/login_screen.dart';
 import '../features/people/people_screen.dart';
@@ -114,6 +115,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => TodoListDetailScreen(
           listId: int.parse(state.pathParameters['id']!),
         ),
+      ),
+      // Reached from the drawer footer. Not a destination anyone browses to —
+      // it is what to open when a tab came up empty and the question is why.
+      GoRoute(
+        path: '/cache',
+        builder: (context, state) => const CacheDiagnosticsScreen(),
       ),
     ],
   );

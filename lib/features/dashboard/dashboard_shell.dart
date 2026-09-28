@@ -349,6 +349,17 @@ class _AppDrawer extends ConsumerWidget {
                   .read(themeControllerProvider.notifier)
                   .toggleDarkMode(Theme.of(context).brightness),
             ),
+            // Under Dark mode rather than among the destinations: nobody goes
+            // looking for it, but when a tab opens empty it is the only place
+            // that says why.
+            ListTile(
+              leading: const Icon(Icons.storage_outlined),
+              title: const Text('Cache diagnostics'),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push('/cache');
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Sign out'),

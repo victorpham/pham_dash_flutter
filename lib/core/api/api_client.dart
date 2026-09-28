@@ -50,7 +50,18 @@ class ApiClient {
   ) async {
     if (options.extra[noAuthKey] == true) return handler.next(options);
 
-    final token = await _auth.idToken();
+    final String? token;
+    try {
+      token = await _auth.idToken();
+    } on NetworkException catch (error) {
+      // A stale token that could not be renewed because the phone is offline.
+      // Sending the request anyway would earn a 401 and drag us down the
+      // sign-out path below over what is only a network failure.
+      return handler.reject(
+        DioException(requestOptions: options, error: error),
+      );
+    }
+
     if (token != null) {
       options.headers['Authorization'] = 'Bearer $token';
     }
@@ -73,7 +84,23 @@ class ApiClient {
         options.extra[_retriedKey] != true;
 
     if (isRetryable401) {
-      final token = await _auth.idToken(forceRefresh: true);
+      final String? token;
+      try {
+        token = await _auth.idToken(forceRefresh: true);
+      } on NetworkException catch (networkError) {
+        // The refresh never reached the IdP, so this 401 says nothing about
+        // whether the session is still good. Report it as what it is; signing
+        // out here would end the session - and clear the offline cache - over
+        // a dropped connection.
+        return handler.reject(
+          DioException(
+            requestOptions: options,
+            response: response,
+            error: networkError,
+          ),
+        );
+      }
+
       if (token != null) {
         options.extra[_retriedKey] = true;
         options.headers['Authorization'] = 'Bearer $token';

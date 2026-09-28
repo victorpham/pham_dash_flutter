@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter_riverpod/experimental/persist.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'cache_log.dart';
+
 /// Riverpod's offline-persistence [Storage], kept in `SharedPreferences`.
 ///
 /// This is what lets a tab render its last-loaded list on the first frame of
@@ -24,9 +26,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// "couldn't refresh" banner - so this store honours expiry itself and declines
 /// the rest.
 final class PreferencesStorage extends Storage<String, String> {
-  PreferencesStorage(this._prefs);
+  PreferencesStorage(this._prefs, {CacheLog? log})
+      : _log = log ?? CacheLog.instance;
 
   final SharedPreferences _prefs;
+  final CacheLog _log;
 
   static const String _prefix = 'phamdash_cache:';
 
@@ -36,6 +40,10 @@ final class PreferencesStorage extends Storage<String, String> {
   /// to the signed-in account, so [clearAll] drops it along with them.
   static const String shoppingSortKey = 'phamdash_shopping_sorted_lists';
 
+  /// Whose cache this is. Also not a cache entry, but it is what scopes the
+  /// ones that are - see [claimFor].
+  static const String ownerKey = 'phamdash_cache_owner';
+
   Iterable<String> get _keys =>
       _prefs.getKeys().where((k) => k.startsWith(_prefix));
 
@@ -44,10 +52,11 @@ final class PreferencesStorage extends Storage<String, String> {
     if (raw == null) return null;
     try {
       return _Entry.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-    } on Object {
+    } on Object catch (error) {
       // Not an envelope this version wrote; drop it rather than keep failing
       // on it every launch.
       _prefs.remove('$_prefix$key');
+      _log.record(CacheEventKind.envelopeCorrupt, key, detail: '$error');
       return null;
     }
   }
@@ -89,18 +98,81 @@ final class PreferencesStorage extends Storage<String, String> {
   }
 
   /// Drops every cached list, and the per-list sort choices keyed on them.
-  /// Called on sign-out, because todo lists are per-user and the next person
-  /// to sign in on this phone must not see them.
+  ///
+  /// Called when the cache changes hands: an explicit sign-out, or a sign-in as
+  /// a different account (see [claimFor]). **Not** on a forced session expiry -
+  /// that is almost always the same user whose token lapsed, and wiping their
+  /// offline copy at the exact moment the network is unreliable is the wrong
+  /// trade. [claimFor] is what keeps the per-user guarantee instead.
   ///
   /// Static, on the raw preferences: the provider is typed as the abstract
   /// [Storage] so tests can swap in `Storage.inMemory()`, and sign-out should
   /// not have to sniff which one it got.
-  static Future<void> clearAll(SharedPreferences prefs) async {
+  static Future<void> clearAll(
+    SharedPreferences prefs, {
+    String reason = 'sign-out',
+    CacheLog? log,
+  }) async {
     for (final key in prefs.getKeys().where((k) => k.startsWith(_prefix))) {
       await prefs.remove(key);
     }
     await prefs.remove(shoppingSortKey);
+    await prefs.remove(ownerKey);
+    (log ?? CacheLog.instance)
+        .record(CacheEventKind.cleared, '*', detail: reason);
   }
+
+  /// Records [userId] as the cache's owner, clearing it first if it belonged to
+  /// somebody else.
+  ///
+  /// This is the per-user guarantee that [clearAll]-on-every-sign-out used to
+  /// provide: todo lists are per-user, so the next person to sign in on this
+  /// phone must not open to the last one's. Doing it on sign-*in* rather than
+  /// sign-out means a session that merely expired keeps its saved copy, which
+  /// is the whole point of having one.
+  ///
+  /// A fresh install has no owner and keeps whatever is there (nothing).
+  static Future<void> claimFor(
+    SharedPreferences prefs,
+    String userId, {
+    CacheLog? log,
+  }) async {
+    final owner = prefs.getString(ownerKey);
+    if (owner == userId) return;
+    if (owner != null) {
+      await clearAll(prefs, reason: 'owner-changed', log: log);
+    }
+    await prefs.setString(ownerKey, userId);
+  }
+
+  /// Every cached key with its size and expiry, for the diagnostics screen.
+  /// Static and on the raw preferences for the same reason [clearAll] is.
+  static List<CacheEntryInfo> describeAll(SharedPreferences prefs) {
+    final store = PreferencesStorage(prefs);
+    return [
+      for (final prefixed
+          in prefs.getKeys().where((k) => k.startsWith(_prefix)).toList())
+        if (store._entry(prefixed.substring(_prefix.length)) case final entry?)
+          CacheEntryInfo(
+            key: prefixed.substring(_prefix.length),
+            bytes: entry.data.length,
+            expireAt: entry.expireAt,
+          ),
+    ]..sort((a, b) => a.key.compareTo(b.key));
+  }
+}
+
+/// One stored key as the diagnostics screen shows it.
+class CacheEntryInfo {
+  const CacheEntryInfo({
+    required this.key,
+    required this.bytes,
+    required this.expireAt,
+  });
+
+  final String key;
+  final int bytes;
+  final DateTime? expireAt;
 }
 
 class _Entry {

@@ -67,6 +67,11 @@ class RecentNotesTab extends ConsumerWidget {
       onRefresh: () => ref.refresh(recentNotesProvider.future),
       child: AsyncView<List<Note>>(
         value: notes,
+        // The saved copy for every build that is not the element's first one,
+        // which is the only one `CachedList` seeds.
+        fallback: notes.hasValue
+            ? null
+            : cachedSeedOf(ref, 'recent_notes', Note.fromJson),
         updatedAt: freshnessOf(ref, 'recent_notes'),
         onRetry: () => ref.invalidate(recentNotesProvider),
         isEmpty: (data) =>

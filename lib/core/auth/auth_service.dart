@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_appauth/flutter_appauth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../api/api_exception.dart';
 import 'auth_config.dart';
 import 'jwt.dart';
 
@@ -128,7 +129,8 @@ class AuthService {
   /// [forceRefresh] is set (the 401 retry path).
   ///
   /// Returns null when there is no recoverable session; the caller should treat
-  /// that as signed out.
+  /// that as signed out. **Throws [NetworkException] when the refresh could not
+  /// be attempted** - see [_refresh] for why the two are not the same answer.
   Future<String?> idToken({bool forceRefresh = false}) async {
     final tokens = _tokens;
     if (tokens == null) return null;
@@ -139,6 +141,31 @@ class AuthService {
     });
   }
 
+  /// The OAuth 2.0 error codes that mean the authorization server answered and
+  /// refused. Anything else - no connectivity, DNS, a timeout, the browser
+  /// component failing to start - never got an answer at all.
+  static const Set<String> _rejections = {
+    FlutterAppAuthOAuthError.invalidGrant,
+    FlutterAppAuthOAuthError.invalidClient,
+    FlutterAppAuthOAuthError.unauthorizedClient,
+    FlutterAppAuthOAuthError.invalidRequest,
+    FlutterAppAuthOAuthError.invalidScope,
+    FlutterAppAuthOAuthError.unsupportedGrantType,
+  };
+
+  /// Renews the ID token, telling a refusal apart from a failure to ask.
+  ///
+  /// Null means the session is genuinely over: there is nothing to renew with,
+  /// or the IdP rejected what we had. A [NetworkException] means we never
+  /// reached it and the session may well still be good.
+  ///
+  /// The distinction is load-bearing, and it used to be missing: a bare
+  /// `catch (_) { return null; }` here made a dropped connection look exactly
+  /// like a revoked refresh token, `ApiClient` signed the user out over it, and
+  /// the sign-out took the whole offline cache with it - at the one moment, a
+  /// flaky network with the database asleep, when the cache is what the app has
+  /// left. See `PreferencesStorage.claimFor`, which is the other half of that
+  /// fix.
   Future<String?> _refresh() async {
     final refreshToken = _tokens?.refreshToken;
     if (refreshToken == null) {
@@ -166,10 +193,17 @@ class AuthService {
         refreshToken: result.refreshToken ?? refreshToken,
       );
       return idToken;
-    } catch (_) {
-      return null;
+    } on FlutterAppAuthPlatformException catch (error) {
+      if (_rejections.contains(error.platformErrorDetails.error)) return null;
+      throw const NetworkException(_unreachable);
+    } on Object {
+      throw const NetworkException(_unreachable);
     }
   }
+
+  static const String _unreachable =
+      'Could not reach the sign-in service. Check your connection and try '
+      'again.';
 
   Future<void> signOut() async {
     final idToken = _tokens?.idToken;

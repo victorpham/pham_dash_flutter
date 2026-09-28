@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/experimental/persist.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:pham_dash_flutter/core/cache/cache_log.dart';
 import 'package:pham_dash_flutter/core/cache/preferences_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -72,12 +73,72 @@ void main() {
     await store.write('people', '[]', _forever);
     await store.write('todo_lists', '[]', _forever);
     await prefs.setStringList(PreferencesStorage.shoppingSortKey, ['10']);
+    await prefs.setString(PreferencesStorage.ownerKey, 'user-1');
 
     await PreferencesStorage.clearAll(prefs);
 
     expect(store.read('people'), isNull);
     expect(store.read('todo_lists'), isNull);
     expect(prefs.getStringList(PreferencesStorage.shoppingSortKey), isNull);
+    expect(prefs.getString(PreferencesStorage.ownerKey), isNull);
     expect(prefs.getString('phamdash_theme_mode'), 'dark');
+  });
+
+  // Todo lists are per-user, and that used to be guaranteed by clearing on
+  // every sign-out - including the forced ones, which threw the offline copy
+  // away over a lapsed token. Claiming on sign-*in* keeps the guarantee and
+  // stops a session ending from costing the user their cache.
+  group('claimFor', () {
+    setUp(() async {
+      await PreferencesStorage(prefs).write('todo_lists', '[1]', _forever);
+    });
+
+    test('the first claim on a fresh install keeps what is there', () async {
+      await PreferencesStorage.claimFor(prefs, 'user-1');
+
+      expect(PreferencesStorage(prefs).read('todo_lists')!.data, '[1]');
+      expect(prefs.getString(PreferencesStorage.ownerKey), 'user-1');
+    });
+
+    test('the same user again keeps their cache', () async {
+      await PreferencesStorage.claimFor(prefs, 'user-1');
+      await PreferencesStorage.claimFor(prefs, 'user-1');
+
+      expect(PreferencesStorage(prefs).read('todo_lists')!.data, '[1]');
+    });
+
+    test('a different user gets a clean one', () async {
+      await prefs.setStringList(PreferencesStorage.shoppingSortKey, ['10']);
+      await PreferencesStorage.claimFor(prefs, 'user-1');
+      await PreferencesStorage.claimFor(prefs, 'user-2');
+
+      expect(PreferencesStorage(prefs).read('todo_lists'), isNull);
+      expect(prefs.getStringList(PreferencesStorage.shoppingSortKey), isNull);
+      expect(prefs.getString(PreferencesStorage.ownerKey), 'user-2');
+      expect(prefs.getString('phamdash_theme_mode'), 'dark');
+    });
+
+    test('records why it cleared', () async {
+      final log = CacheLog();
+      await PreferencesStorage.claimFor(prefs, 'user-1', log: log);
+      expect(log.events, isEmpty);
+
+      await PreferencesStorage.claimFor(prefs, 'user-2', log: log);
+      expect(log.events.single.kind, CacheEventKind.cleared);
+      expect(log.events.single.detail, 'owner-changed');
+    });
+  });
+
+  test('describeAll reports each stored key with its size', () async {
+    final store = PreferencesStorage(prefs);
+    await store.write('people', '[{}]', _forever);
+    await store.write('todo_lists', '[]', _instant);
+
+    final described = PreferencesStorage.describeAll(prefs);
+
+    // The expired one was swept on the way through, as it is on every launch.
+    expect(described.map((e) => e.key), ['people']);
+    expect(described.single.bytes, 4);
+    expect(described.single.expireAt, isNull);
   });
 }

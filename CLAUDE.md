@@ -82,6 +82,12 @@ touch Dio, and repositories never touch Riverpod.
 - **401 contract:** `ApiClient` force-refreshes and retries a request exactly once;
   a second 401 signs out and emits on `sessionExpired`, which `AuthController`
   turns into a router redirect. Pass `noAuthKey` in `extra` to opt a request out.
+  **A refresh that never reached the IdP is not a second 401.** `AuthService._refresh`
+  returns null only when the session is genuinely over (nothing to renew with, or an
+  OAuth error code back from the server) and throws `NetworkException` otherwise;
+  `ApiClient` reports that and leaves the user signed in. The bare `catch` this
+  replaced made a dropped connection look like a revoked token, and the sign-out that
+  followed wiped the whole offline cache — see `PreferencesStorage.claimFor`.
 - **Media URLs are signed.** `AppConfig.apiOrigin` is the server root *without*
   `/api`; `AppConfig.mediaUrl` re-hosts a stored path against it. The query string
   (`?exp=&sig=`) is the credential — dropping it turns every avatar into a 401.
@@ -108,8 +114,20 @@ touch Dio, and repositories never touch Riverpod.
   thin bar while the fetch runs. `PreferencesStorage.delete` deliberately keeps
   unexpired entries, because Riverpod deletes on provider error and a failed
   wake is exactly when the saved copy matters. `AsyncView` keeps data on error
-  (banner + Retry) rather than swapping to the error view; sign-out clears the
-  cache. Tests override `cacheStorageProvider` with `Storage.inMemory()`, and
+  (banner + Retry) rather than swapping to the error view. **Riverpod reads the
+  store only at an element's first build** (`ref.isFirstBuild`), so an
+  invalidate, a refresh or a changed dependency never re-seeds — what holds
+  data on screen after that is `copyWithPrevious`. A screen that can arrive
+  with neither wants `cachedSeedOf` + `AsyncView.fallback`, which the Schedule,
+  Lists and Notes tabs pass. The seed also tolerates a single unreadable row
+  (`tolerantDecodeList`, for a cached copy written before a model changed) while
+  the API path (`decodeList`) stays strict. **An explicit sign-out clears the
+  cache; a forced session expiry does not** — `PreferencesStorage.claimFor`
+  records the owning user id on sign-in and clears only when it changes, which
+  keeps the per-user guarantee without losing offline data to a lapsed token.
+  Every outcome goes to `CacheLog` and the drawer's "Cache diagnostics" screen,
+  because all of these paths used to fail silently. Tests override
+  `cacheStorageProvider` with `Storage.inMemory()`, and
   the cached providers are notifiers, so fake them with `overrideWithBuild`.
   Detail screens are not cached separately: the todo list detail and the
   person header pass the matching record from the lists / people cache as

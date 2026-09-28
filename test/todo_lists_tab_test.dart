@@ -13,6 +13,7 @@ import 'package:pham_dash_flutter/core/ui/async_view.dart';
 import 'package:pham_dash_flutter/data/models/todo_models.dart';
 import 'package:pham_dash_flutter/data/repositories/todo_repository.dart';
 import 'package:pham_dash_flutter/features/dashboard/dashboard_shell.dart';
+import 'package:pham_dash_flutter/features/todo/todo_providers.dart';
 
 const _chores = TodoLabel(id: 1, name: 'Chores', listCount: 1);
 
@@ -83,6 +84,9 @@ class _FakeTodos extends TodoRepository {
   @override
   Future<List<TodoList>> listsWithLabel(int labelId) async {
     lastLabelId = labelId;
+    await gate?.future;
+    final error = failWith;
+    if (error != null) throw error;
     return [_packing];
   }
 }
@@ -100,6 +104,7 @@ Future<_FakeTodos> _pumpTab(
   Storage<String, String>? storage,
   Completer<void>? gate,
   Object? failWith,
+  int? labelFilter,
   bool settle = true,
 }) async {
   final todos = _FakeTodos(ApiClient(AuthService()))
@@ -114,6 +119,11 @@ Future<_FakeTodos> _pumpTab(
       overrides: [
         todoRepositoryProvider.overrideWithValue(todos),
         cacheStorageProvider.overrideWithValue(storage ?? Storage.inMemory()),
+        // A filter that is already on when the notifier first builds - which
+        // the UI cannot set up, because setting it is what mounts the tab.
+        if (labelFilter != null)
+          labelFilterProvider
+              .overrideWith(() => SimpleValue<int?>(() => labelFilter)),
       ],
       child: MaterialApp(
         home: Scaffold(
@@ -276,5 +286,62 @@ void main() {
     // Groceries is only in the default answer, so its presence proves the
     // filtered [Packing] result did not overwrite the store.
     expect(saved!.data, contains('Groceries'));
+  });
+
+  // ... and must not be *shown* one either. The fallback below would otherwise
+  // answer a filtered question with the unfiltered directory.
+  testWidgets('a filtered view waits rather than showing the saved copy',
+      (tester) async {
+    await _pumpTab(
+      tester,
+      storage: _seededStore(),
+      labelFilter: 1,
+      gate: Completer<void>(),
+      settle: false,
+    );
+    await tester.pump();
+
+    expect(find.text('Saved last time'), findsNothing);
+    expect(find.byType(PatientLoading), findsOneWidget);
+  });
+
+  // The gap the fallback exists for. Riverpod reads the store only at the
+  // element's first build, and that build took the filtered branch, which does
+  // not read it at all. Clearing the filter re-runs `build()` - but as a
+  // rebuild, so nothing re-reads the cache, and before this the tab sat on a
+  // bare spinner for the length of a database wake with a perfectly good copy
+  // on disk.
+  testWidgets('the saved copy renders on a build that never seeded',
+      (tester) async {
+    final todos = await _pumpTab(
+      tester,
+      storage: _seededStore(),
+      labelFilter: 1,
+      failWith: const NetworkException('offline'),
+    );
+
+    // Nothing seeded and nothing fetched: the filtered branch has no cache.
+    expect(find.byType(ErrorStateView), findsOneWidget);
+    expect(find.text('Saved last time'), findsNothing);
+
+    todos
+      ..failWith = null
+      ..gate = Completer<void>();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(Scaffold)),
+    );
+    container.read(labelFilterProvider.notifier).value = null;
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Saved last time'), findsOneWidget);
+    expect(find.byType(PatientLoading), findsNothing);
+
+    todos.gate!.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Saved last time'), findsNothing);
+    expect(find.text('Groceries'), findsOneWidget);
   });
 }

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/cache/cache_log.dart';
 import '../../core/cache/cached_list.dart';
 import '../../core/cache/freshness.dart';
 import '../../core/cache/preferences_storage.dart';
@@ -66,6 +67,16 @@ class TodoListsNotifier extends AsyncNotifier<List<TodoList>>
         fromJson: TodoList.fromJson,
         toJson: (list) => list.toJson(),
       );
+    } else if (ref.isFirstBuild) {
+      // A first build is the only one that would have read the store, so it is
+      // the only skip worth recording - and it is the one that leaves the tab
+      // with nothing to draw. `TodoListsTab` covers it with `AsyncView`'s
+      // fallback; this is so the diagnostics screen can say why.
+      ref.read(cacheLogProvider).record(
+            CacheEventKind.notSeeded,
+            'todo_lists',
+            detail: 'filtered view',
+          );
     }
 
     final repository = ref.watch(todoRepositoryProvider);
