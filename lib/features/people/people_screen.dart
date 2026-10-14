@@ -11,6 +11,7 @@ import '../../core/ui/async_view.dart';
 import '../../core/ui/person_avatar.dart';
 import '../../core/ui/sync_indicator.dart';
 import '../../data/models/people_models.dart';
+import '../dashboard/dashboard_shell.dart';
 import 'pending_creates.dart';
 import 'pending_status.dart';
 import 'people_filters_sheet.dart';
@@ -186,6 +187,9 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        // A Scaffold with a drawer swaps the back arrow for a hamburger; the
+        // bar's Menu button already opens the drawer, so keep back here.
+        leading: Navigator.canPop(context) ? const BackButton() : null,
         title: const Text('People'),
         actions: [
           // Red once a queued create has failed, wherever the user has got to.
@@ -234,6 +238,8 @@ class _PeopleScreenState extends ConsumerState<PeopleScreen> {
         },
         child: const Icon(Icons.person_add_alt_1),
       ),
+      drawer: const AppDrawer(),
+      bottomNavigationBar: DashboardBottomBar.people(context),
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(allPeopleProvider.future),
         child: AsyncView<List<Person>>(

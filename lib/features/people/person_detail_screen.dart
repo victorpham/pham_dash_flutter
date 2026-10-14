@@ -17,6 +17,7 @@ import '../../core/ui/person_picker.dart';
 import '../../core/ui/sync_indicator.dart';
 import '../../data/models/converters.dart';
 import '../../data/models/people_models.dart';
+import '../dashboard/dashboard_shell.dart';
 import '../notes/recent_notes_tab.dart';
 import 'pending_creates.dart';
 import 'pending_status.dart';
@@ -41,27 +42,6 @@ int _personPagesInStack(BuildContext context) => GoRouter.of(context)
     .matches
     .where((match) => match.matchedLocation.startsWith('$peopleListLocation/'))
     .length;
-
-/// Drops the whole chain of person pages and lands on the people list.
-///
-/// Popping to the list is preferred over navigating to it, so that whatever sat
-/// underneath the chain — the dashboard, usually — survives as the back target.
-/// A chain that began at a birthday row or a recent note has no list beneath it
-/// to land on, so one is pushed instead; either way the button does what it
-/// says.
-void _backToPeopleList(BuildContext context) {
-  final router = GoRouter.of(context);
-  final listIsBelow = router.routerDelegate.currentConfiguration.matches
-      .any((match) => match.matchedLocation == peopleListLocation);
-
-  Navigator.of(context).popUntil(
-    // `isFirst` guards the case where a person page is the whole stack, as a
-    // deep link would leave it — popping that far would empty the navigator.
-    (route) => route.isFirst || route.settings.name != personPageName,
-  );
-
-  if (!listIsBelow) router.push(peopleListLocation);
-}
 
 class PersonDetailScreen extends ConsumerWidget {
   const PersonDetailScreen({super.key, required this.personId});
@@ -103,7 +83,12 @@ class PersonDetailScreen extends ConsumerWidget {
     }
 
     return Scaffold(
+      drawer: const AppDrawer(),
+      bottomNavigationBar: DashboardBottomBar.people(context),
       appBar: AppBar(
+        // A Scaffold with a drawer swaps the back arrow for a hamburger; the
+        // bar's Menu button already opens the drawer, so keep back here.
+        leading: Navigator.canPop(context) ? const BackButton() : null,
         title: Text(person.value?.fullName ?? 'Person'),
         actions: [
           SyncIndicator(onFailedTap: () => showFailedChangesSheet(context)),
@@ -114,7 +99,7 @@ class PersonDetailScreen extends ConsumerWidget {
             IconButton(
               tooltip: 'Back to the people list',
               icon: const Icon(Icons.people_alt_outlined),
-              onPressed: () => _backToPeopleList(context),
+              onPressed: () => showPeopleList(context),
             ),
           // Nothing to edit until the server has the person: the edit sheet
           // writes to `PUT /people/{id}`, and there is no id yet.
@@ -357,9 +342,13 @@ class _RelationshipsSection extends ConsumerWidget {
     final relationships = isPlaceholder
         ? const AsyncData(<Relationship>[])
         : ref.watch(personRelationshipsProvider(person.id));
+    // The bulk table seeds the section, and is also where the parents' own
+    // rows - the grandparents - come from. Nothing shows for them until it
+    // has loaded, or on an API without the route.
+    final everyone = ref.watch(allRelationshipsProvider);
     final fallback = isPlaceholder
         ? null
-        : relationshipsFor(ref.watch(allRelationshipsProvider), person.id);
+        : relationshipsFor(everyone, person.id);
     final queue = ref.watch(pendingCreatesProvider);
     final resolve = ref.read(pendingCreatesProvider.notifier).resolve;
 
@@ -391,7 +380,7 @@ class _RelationshipsSection extends ConsumerWidget {
               groups: RelationshipGroups.from([
                 for (final e in pending) e.placeholder,
                 ...data,
-              ]),
+              ], everyone: everyone.value ?? const []),
               pending: {for (final e in pending) e.placeholder.relationshipId: e},
             );
           },
@@ -525,13 +514,18 @@ class _RelationshipList extends ConsumerWidget {
               pending: pending[child.relationshipId],
             ),
         ],
-        if (groups.others.isNotEmpty) ...[
-          _SubHeader('Other relationships (${groups.others.length})'),
-          for (final other in groups.others)
+        if (groups.otherCount > 0) ...[
+          _SubHeader('Other relationships (${groups.otherCount})'),
+          for (final row in groups.otherRows)
             _RelationshipRow(
               personId: personId,
-              relationship: other,
-              pending: pending[other.relationshipId],
+              relationship: row.relationship,
+              derived: row.derived,
+              // A derived row is a server row of the parent's, never the
+              // queue's; its id would not collide with a placeholder anyway.
+              pending: row.derived
+                  ? null
+                  : pending[row.relationship.relationshipId],
             ),
         ],
       ],
@@ -544,6 +538,7 @@ class _RelationshipRow extends ConsumerWidget {
     required this.personId,
     required this.relationship,
     this.pending,
+    this.derived = false,
   });
 
   final String personId;
@@ -553,6 +548,14 @@ class _RelationshipRow extends ConsumerWidget {
   /// - there is no `relationshipId` to delete - and the status line, with its
   /// own Retry and Discard, takes the subtitle instead.
   final PendingRelationship? pending;
+
+  /// A grandparent: [relationship] is the *parent's* Parent row, so it reads
+  /// "Grandparent" rather than its own type, and has no Remove button -
+  /// deleting it here would silently edit the parent's page. The link still
+  /// works, because the related person is the grandparent.
+  final bool derived;
+
+  String get _label => derived ? 'Grandparent' : relationship.type.label;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -576,7 +579,7 @@ class _RelationshipRow extends ConsumerWidget {
           ? Row(
               children: [
                 Text(
-                  relationship.type.label,
+                  _label,
                   style: TextStyle(fontSize: 12.5, color: scheme.mutedForeground),
                 ),
                 const SizedBox(width: 8),
@@ -585,12 +588,12 @@ class _RelationshipRow extends ConsumerWidget {
             )
           : Text(
               [
-                relationship.type.label,
+                _label,
                 if (birthDate != null) DateFormat('MMM d, y').format(birthDate),
               ].join(' · '),
               style: TextStyle(fontSize: 12.5, color: scheme.mutedForeground),
             ),
-      trailing: pending != null
+      trailing: pending != null || derived
           ? null
           : IconButton(
               tooltip: 'Remove',

@@ -10,11 +10,12 @@ Relationship _relationship(
   required String firstName,
   String lastName = 'Pham',
   int? age,
+  String personId = 'root1',
 }) {
   final now = DateTime.now();
   return Relationship(
     relationshipId: _nextId++,
-    personId: 'root1',
+    personId: personId,
     relatedPersonId: '$firstName$lastName',
     type: type,
     relatedPersonFirstName: firstName,
@@ -99,6 +100,101 @@ void main() {
       ]);
 
       expect(_names(groups.others), ['Kim']);
+    });
+  });
+
+  // A grandparent is a Parent row owned by one of this person's parents. The
+  // helper's relatedPersonId is '<first><last>', so a parent named Ha Pham owns
+  // rows under personId 'HaPham'.
+  group('grandparents', () {
+    test('are the parents\' own parents, oldest first', () {
+      final groups = RelationshipGroups.from(
+        [_relationship(RelationshipType.parent, firstName: 'Ha', age: 50)],
+        everyone: [
+          _relationship(RelationshipType.parent,
+              firstName: 'Ong', age: 78, personId: 'HaPham'),
+          _relationship(RelationshipType.parent,
+              firstName: 'Ba', age: 80, personId: 'HaPham'),
+          // Ha's sibling is an aunt, not a grandparent.
+          _relationship(RelationshipType.sibling,
+              firstName: 'Di', age: 45, personId: 'HaPham'),
+          // Someone else's parent row.
+          _relationship(RelationshipType.parent,
+              firstName: 'Stranger', age: 90, personId: 'other'),
+        ],
+      );
+
+      expect(_names(groups.grandparents), ['Ba', 'Ong']);
+      expect(groups.otherCount, 3);
+    });
+
+    test('sit after Parents and before Siblings in otherRows', () {
+      final groups = RelationshipGroups.from(
+        [
+          _relationship(RelationshipType.friend, firstName: 'Kim', age: 30),
+          _relationship(RelationshipType.sibling, firstName: 'Minh', age: 30),
+          _relationship(RelationshipType.parent, firstName: 'Ha', age: 50),
+        ],
+        everyone: [
+          _relationship(RelationshipType.parent,
+              firstName: 'Ba', age: 80, personId: 'HaPham'),
+        ],
+      );
+
+      expect(
+        groups.otherRows.map((r) => r.relationship.relatedPersonFirstName),
+        ['Ha', 'Ba', 'Minh', 'Kim'],
+      );
+      expect(
+        groups.otherRows.map((r) => r.derived),
+        [false, true, false, false],
+      );
+      // The direct list is untouched.
+      expect(_names(groups.others), ['Ha', 'Minh', 'Kim']);
+    });
+
+    test('a grandparent reachable through both parents shows once', () {
+      final groups = RelationshipGroups.from(
+        [
+          _relationship(RelationshipType.parent, firstName: 'Ha', age: 50),
+          _relationship(RelationshipType.parent, firstName: 'Nam', age: 52),
+        ],
+        everyone: [
+          _relationship(RelationshipType.parent,
+              firstName: 'Ba', age: 80, personId: 'HaPham'),
+          _relationship(RelationshipType.parent,
+              firstName: 'Ba', age: 80, personId: 'NamPham'),
+        ],
+      );
+
+      expect(_names(groups.grandparents), ['Ba']);
+    });
+
+    test('never lists the person as their own grandparent', () {
+      final groups = RelationshipGroups.from(
+        [_relationship(RelationshipType.parent, firstName: 'Ha', age: 50)],
+        everyone: [
+          Relationship(
+            relationshipId: 999,
+            personId: 'HaPham',
+            relatedPersonId: 'root1',
+            type: RelationshipType.parent,
+            relatedPersonFirstName: 'Me',
+          ),
+        ],
+      );
+
+      expect(groups.grandparents, isEmpty);
+    });
+
+    test('are absent without the bulk table', () {
+      final groups = RelationshipGroups.from([
+        _relationship(RelationshipType.parent, firstName: 'Ha', age: 50),
+      ]);
+
+      expect(groups.grandparents, isEmpty);
+      expect(groups.otherCount, 1);
+      expect(_names(groups.others), ['Ha']);
     });
   });
 

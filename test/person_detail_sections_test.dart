@@ -63,6 +63,16 @@ const _byronToAda = Relationship(
   relatedPersonLastName: 'Lovelace',
 );
 
+/// Byron's own parent: Ada's grandparent, derived from the bulk table.
+const _byronToAugusta = Relationship(
+  relationshipId: 12,
+  personId: 'zY9wP',
+  relatedPersonId: 'gR4nD',
+  type: RelationshipType.parent,
+  relatedPersonFirstName: 'Augusta',
+  relatedPersonLastName: 'Milbanke',
+);
+
 /// Subclasses rather than implements - see `todo_lists_tab_test.dart`.
 class _FakeNotes extends NotesRepository {
   _FakeNotes(super.api);
@@ -134,6 +144,7 @@ Future<({_FakeNotes notes, _FakeRelationships relationships})> _pumpDetail(
   Object? failOwnWith,
   Object? failAllWith,
   List<Note>? everyoneNotes,
+  List<Relationship>? everyoneRelationships,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
@@ -147,6 +158,9 @@ Future<({_FakeNotes notes, _FakeRelationships relationships})> _pumpDetail(
     ..gate = gate
     ..failOwnWith = failOwnWith
     ..failAllWith = failAllWith;
+  if (everyoneRelationships != null) {
+    relationships.everyone = everyoneRelationships;
+  }
 
   final router = GoRouter(
     initialLocation: '/people/${_ada.id}',
@@ -306,5 +320,34 @@ void main() {
 
     gate.complete();
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('a parent\'s own parent shows as a grandparent, after the '
+      'parent and without a Remove button', (tester) async {
+    await _pumpDetail(
+      tester,
+      everyoneRelationships: const [_adaToByron, _byronToAda, _byronToAugusta],
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('OTHER RELATIONSHIPS (2)'), findsOneWidget);
+    final byron = find.widgetWithText(ListTile, 'Byron Lovelace');
+    final augusta = find.widgetWithText(ListTile, 'Augusta Milbanke');
+    expect(byron, findsOneWidget);
+    expect(augusta, findsOneWidget);
+    expect(find.text('Grandparent'), findsOneWidget);
+    expect(
+      tester.getTopLeft(byron).dy,
+      lessThan(tester.getTopLeft(augusta).dy),
+    );
+    // The direct row can be removed; the derived one is Byron's link.
+    expect(
+      find.descendant(of: byron, matching: find.byIcon(Icons.link_off)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: augusta, matching: find.byIcon(Icons.link_off)),
+      findsNothing,
+    );
   });
 }

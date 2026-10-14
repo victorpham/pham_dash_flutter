@@ -27,6 +27,28 @@ const String personPageName = 'person-detail';
 /// The people list's location, as matched by the router.
 const String peopleListLocation = '/people';
 
+/// Shows the people list, dropping any chain of person pages above it.
+///
+/// Popping to the list is preferred over navigating to it, so that whatever sat
+/// underneath — the dashboard, usually — survives as the back target. With no
+/// list beneath (from the dashboard, or a chain that began at a birthday row or
+/// a recent note) one is pushed instead; on the list itself this does nothing.
+/// That is what lets the bottom bar's People button and the drawer's People
+/// row behave the same from every screen.
+void showPeopleList(BuildContext context) {
+  final router = GoRouter.of(context);
+  final listIsBelow = router.routerDelegate.currentConfiguration.matches
+      .any((match) => match.matchedLocation == peopleListLocation);
+
+  Navigator.of(context).popUntil(
+    // `isFirst` guards the case where a person page is the whole stack, as a
+    // deep link would leave it — popping that far would empty the navigator.
+    (route) => route.isFirst || route.settings.name != personPageName,
+  );
+
+  if (!listIsBelow) router.push(peopleListLocation);
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
   // Rebuilding the router on every auth change would lose navigation state, so
   // instead we expose auth as a Listenable and let go_router re-run `redirect`.

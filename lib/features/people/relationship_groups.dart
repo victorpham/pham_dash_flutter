@@ -6,11 +6,17 @@ import '../../data/models/people_models.dart';
 /// All of this is client-side — the API returns one unordered list and the web
 /// client does the grouping in `PersonDetail.vue`. Reproduced here rule for
 /// rule so the two clients agree on what "immediate family" means.
+///
+/// [grandparents] is client-side too, and the API has no type for it: a
+/// grandparent is a Parent row on one of this person's parents. The web
+/// fetches each parent's list to find them; here they are a lookup in the
+/// bulk cache passed to [from] as `everyone`.
 class RelationshipGroups {
   const RelationshipGroups({
     required this.spouse,
     required this.children,
     required this.others,
+    this.grandparents = const [],
   });
 
   /// The first Spouse row, if any. The server refuses a second one only by way
@@ -24,11 +30,42 @@ class RelationshipGroups {
   /// within each type.
   final List<Relationship> others;
 
+  /// The parents' own Parent rows, oldest first, one per grandparent. These
+  /// are *another person's* rows: `personId` is the parent, and the
+  /// `relatedPerson*` fields describe the grandparent, which is what the row
+  /// widget shows. Not deletable from this page for the same reason.
+  final List<Relationship> grandparents;
+
   bool get hasImmediateFamily => spouse != null || children.isNotEmpty;
 
-  bool get isEmpty => spouse == null && children.isEmpty && others.isEmpty;
+  bool get isEmpty =>
+      spouse == null &&
+      children.isEmpty &&
+      others.isEmpty &&
+      grandparents.isEmpty;
 
-  static RelationshipGroups from(List<Relationship> relationships) {
+  /// Size of the "Other relationships" section.
+  int get otherCount => others.length + grandparents.length;
+
+  /// The "Other relationships" section in display order: Parents, then their
+  /// parents (`derived`), then Siblings and Friends.
+  List<({Relationship relationship, bool derived})> get otherRows => [
+        for (final r in others)
+          if (r.type == RelationshipType.parent)
+            (relationship: r, derived: false),
+        for (final r in grandparents) (relationship: r, derived: true),
+        for (final r in others)
+          if (r.type != RelationshipType.parent)
+            (relationship: r, derived: false),
+      ];
+
+  /// [relationships] is this person's own list; [everyone] is the whole
+  /// table (every person's rows, both directions), or empty when the bulk
+  /// cache is not loaded yet — then there are simply no grandparents to show.
+  static RelationshipGroups from(
+    List<Relationship> relationships, {
+    List<Relationship> everyone = const [],
+  }) {
     Relationship? spouse;
     for (final relationship in relationships) {
       if (relationship.type == RelationshipType.spouse) {
@@ -56,7 +93,35 @@ class RelationshipGroups {
       spouse: spouse,
       children: children,
       others: others,
+      grandparents: _grandparents(relationships, everyone),
     );
+  }
+
+  /// Parent rows whose owner is one of this person's parents. A pending
+  /// parent counts: its placeholder's `relatedPersonId` is a real person. The
+  /// person themself is skipped (a cycle in the data, not a grandparent), and
+  /// a grandparent reachable through both parents shows once.
+  static List<Relationship> _grandparents(
+    List<Relationship> relationships,
+    List<Relationship> everyone,
+  ) {
+    if (relationships.isEmpty || everyone.isEmpty) return const [];
+    final self = relationships.first.personId;
+    final parentIds = {
+      for (final r in relationships)
+        if (r.type == RelationshipType.parent) r.relatedPersonId,
+    };
+    if (parentIds.isEmpty) return const [];
+
+    final seen = <String>{};
+    return everyone
+        .where((r) =>
+            r.type == RelationshipType.parent &&
+            parentIds.contains(r.personId) &&
+            r.relatedPersonId != self &&
+            seen.add(r.relatedPersonId))
+        .toList()
+      ..sort(_byAgeThenName);
   }
 
   /// Parents, then Siblings, then Friends.

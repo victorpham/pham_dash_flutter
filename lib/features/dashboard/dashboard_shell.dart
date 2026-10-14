@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../app/router.dart';
 import '../../core/providers.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/ui/sync_indicator.dart';
@@ -33,7 +34,8 @@ import '../weather/weather_tab.dart';
 /// scheduled time never reached that feed. See `TodoListsTab`.
 ///
 /// The bar around them differs from the web's: Menu still opens the drawer and
-/// People pushes a full screen, but dark mode has moved into the drawer footer,
+/// People pushes a full screen (which carries the same bar — see
+/// [DashboardBottomBar]), but dark mode has moved into the drawer footer,
 /// where a device-local setting sits better than in a row of destinations.
 enum DashboardTab {
   weather('/dashboard/weather', 'Weather', Icons.wb_cloudy_outlined,
@@ -145,24 +147,55 @@ class _DashboardShellState extends ConsumerState<DashboardShell> {
         actions: tab.appBarActions,
         bottom: tab.appBarBottom,
       ),
-      drawer: const _AppDrawer(),
+      drawer: const AppDrawer(),
 
       // Tab content is deliberately full-bleed: the mobile web dashboard
       // strips card padding, radius and shadow so each widget fills the pane.
       body: navigationShell,
       floatingActionButton: tab.floatingActionButton,
-      bottomNavigationBar: _BottomBar(navigationShell: navigationShell),
+      bottomNavigationBar: DashboardBottomBar(
+        selectedTab: tab,
+        onTabTap: (tapped) => navigationShell.goBranch(
+          tapped.index,
+          // Tapping the active tab returns it to its root, the conventional
+          // bottom-nav behaviour.
+          initialLocation: tapped == tab,
+        ),
+      ),
     );
   }
 }
 
-class _BottomBar extends ConsumerWidget {
-  const _BottomBar({required this.navigationShell});
+/// The dashboard's tab bar: Menu, the four [DashboardTab]s, then People.
+///
+/// The shell shows it, and so do the people list and person pages — those are
+/// pushed over the shell rather than being a branch of it (see the People
+/// button below), and without it they read as having lost the navigation. The
+/// Menu button opens the enclosing `Scaffold`'s drawer, so a screen showing
+/// this bar also wants an [AppDrawer].
+class DashboardBottomBar extends StatelessWidget {
+  const DashboardBottomBar({
+    super.key,
+    required this.selectedTab,
+    required this.onTabTap,
+  });
 
-  final StatefulNavigationShell navigationShell;
+  /// The bar as the people screens show it: People selected, and a tab tap
+  /// leaves the pushed stack for that tab. The shell route stays matched
+  /// under `go`, so every branch keeps its state.
+  factory DashboardBottomBar.people(BuildContext context) =>
+      DashboardBottomBar(
+        selectedTab: null,
+        onTabTap: (tab) => context.go(tab.path),
+      );
+
+  /// The highlighted tab; null when People is the current screen.
+  final DashboardTab? selectedTab;
+
+  final ValueChanged<DashboardTab> onTabTap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
     return SafeArea(
@@ -185,25 +218,20 @@ class _BottomBar extends ConsumerWidget {
             ),
             for (final tab in DashboardTab.values)
               _BarButton(
-                icon: navigationShell.currentIndex == tab.index
-                    ? tab.selectedIcon
-                    : tab.icon,
+                icon: selectedTab == tab ? tab.selectedIcon : tab.icon,
                 label: tab.label,
-                selected: navigationShell.currentIndex == tab.index,
-                onTap: () => navigationShell.goBranch(
-                  tab.index,
-                  // Tapping the active tab returns it to its root, the
-                  // conventional bottom-nav behaviour.
-                  initialLocation: tab.index == navigationShell.currentIndex,
-                ),
+                selected: selectedTab == tab,
+                onTap: () => onTabTap(tab),
               ),
             // People is a push, not a branch: it is a full screen with its own
-            // app bar, search and FAB rather than a dashboard widget, so it
-            // never reads as "selected" here.
+            // app bar, search and FAB rather than a dashboard widget. It is
+            // selected while a people screen is showing, and tapping it there
+            // drops any chain of person pages back to the list.
             _BarButton(
-              icon: Icons.people_outline,
+              icon: selectedTab == null ? Icons.people : Icons.people_outline,
               label: 'People',
-              onTap: () => context.push('/people'),
+              selected: selectedTab == null,
+              onTap: () => showPeopleList(context),
             ),
           ],
         ),
@@ -253,8 +281,9 @@ class _BarButton extends StatelessWidget {
   }
 }
 
-class _AppDrawer extends ConsumerWidget {
-  const _AppDrawer();
+/// The navigation drawer behind the bar's Menu button.
+class AppDrawer extends ConsumerWidget {
+  const AppDrawer({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -311,7 +340,7 @@ class _AppDrawer extends ConsumerWidget {
               title: const Text('People'),
               onTap: () {
                 Navigator.of(context).pop();
-                context.push('/people');
+                showPeopleList(context);
               },
             ),
             ListTile(
