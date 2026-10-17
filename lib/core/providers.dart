@@ -89,9 +89,9 @@ class AuthController extends AsyncNotifier<AuthUser?> {
     // The API client signs the user out when a 401 survives the retry; reflect
     // that here so the router redirects.
     final subscription =
-        ref.watch(apiClientProvider).sessionExpired.listen((_) {
+        ref.watch(apiClientProvider).sessionExpired.listen((reason) {
       state = const AsyncData(null);
-      _endSession();
+      _endSession(reason);
     });
     ref.onDispose(subscription.cancel);
 
@@ -110,6 +110,9 @@ class AuthController extends AsyncNotifier<AuthUser?> {
   }
 
   Future<void> signOut() async {
+    ref
+        .read(cacheLogProvider)
+        .record(CacheEventKind.authSignOut, '*', detail: 'from the menu');
     await ref.read(authServiceProvider).signOut();
     state = const AsyncData(null);
     await _clearCache();
@@ -135,11 +138,13 @@ class AuthController extends AsyncNotifier<AuthUser?> {
   /// could not clear) tends to arrive exactly when the network is unreliable
   /// and the saved copy is the only thing the app can still show. If somebody
   /// else does sign in next, [_claim] clears it before they see anything.
-  void _endSession() {
+  void _endSession(String reason) {
     ref.read(sessionEndedProvider.notifier).bump();
-    ref
-        .read(cacheLogProvider)
-        .record(CacheEventKind.sessionExpired, '*', detail: 'cache kept');
+    ref.read(cacheLogProvider).record(
+          CacheEventKind.sessionExpired,
+          '*',
+          detail: '$reason; cache kept',
+        );
   }
 
   /// A deliberate sign-out: the phone is being handed over, so the cached

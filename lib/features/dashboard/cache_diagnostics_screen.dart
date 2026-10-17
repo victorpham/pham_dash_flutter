@@ -27,7 +27,9 @@ class CacheDiagnosticsScreen extends ConsumerWidget {
     final entries = PreferencesStorage.describeAll(
       ref.watch(sharedPreferencesProvider),
     );
-    final events = ref.watch(cacheLogProvider).events;
+    final log = ref.watch(cacheLogProvider);
+    final events = log.events;
+    final authHistory = log.authHistory;
     final stamps = ref.watch(freshnessProvider);
 
     return Scaffold(
@@ -41,6 +43,13 @@ class CacheDiagnosticsScreen extends ConsumerWidget {
           else
             for (final entry in entries)
               _StoredRow(entry: entry, fetchedAt: stamps[entry.key]),
+          const Divider(height: 32),
+          _Heading('Sign-in history (${authHistory.length})'),
+          if (authHistory.isEmpty)
+            const _Hint('No sign-in activity recorded yet.')
+          else
+            for (final event in authHistory)
+              _EventRow(event: event, withDate: true),
           const Divider(height: 32),
           _Heading('This session (${events.length})'),
           if (events.isEmpty)
@@ -84,9 +93,12 @@ class _StoredRow extends StatelessWidget {
 }
 
 class _EventRow extends StatelessWidget {
-  const _EventRow({required this.event});
+  const _EventRow({required this.event, this.withDate = false});
 
   final CacheEvent event;
+
+  /// The sign-in history spans launches, so a bare clock time is ambiguous.
+  final bool withDate;
 
   @override
   Widget build(BuildContext context) {
@@ -103,18 +115,25 @@ class _EventRow extends StatelessWidget {
         (Icons.delete_sweep_outlined, scheme.tertiary),
       CacheEventKind.envelopeCorrupt ||
       CacheEventKind.decodeFailed ||
-      CacheEventKind.uncaught =>
+      CacheEventKind.uncaught ||
+      CacheEventKind.authRefreshFailed =>
         (Icons.error_outline, scheme.error),
+      CacheEventKind.authSignIn ||
+      CacheEventKind.authRestore ||
+      CacheEventKind.authRefresh =>
+        (Icons.key_outlined, scheme.primary),
+      CacheEventKind.authSignOut => (Icons.logout, scheme.mutedForeground),
     };
 
     final detail = event.detail;
+    final when = withDate ? _stamp(event.at) : _clock(event.at);
 
     return ListTile(
       dense: true,
       leading: Icon(icon, size: 20, color: colour),
       title: Text('${event.key} — ${_label(event.kind)}'),
       subtitle: Text(
-        detail == null ? _clock(event.at) : '${_clock(event.at)} · $detail',
+        detail == null ? when : '$when · $detail',
         style: TextStyle(color: scheme.mutedForeground),
       ),
       isThreeLine: detail != null && detail.length > 48,
@@ -133,7 +152,16 @@ String _label(CacheEventKind kind) => switch (kind) {
       CacheEventKind.cleared => 'cache cleared',
       CacheEventKind.sessionExpired => 'session expired',
       CacheEventKind.uncaught => 'uncaught error',
+      CacheEventKind.authSignIn => 'signed in',
+      CacheEventKind.authRestore => 'session restored',
+      CacheEventKind.authRefresh => 'token renewed',
+      CacheEventKind.authRefreshFailed => 'token renewal failed',
+      CacheEventKind.authSignOut => 'signed out',
     };
+
+String _stamp(DateTime at) =>
+    '${at.month.toString().padLeft(2, '0')}-'
+    '${at.day.toString().padLeft(2, '0')} ${_clock(at)}';
 
 String _size(int bytes) => bytes < 1024
     ? '$bytes B'

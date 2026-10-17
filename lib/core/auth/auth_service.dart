@@ -4,6 +4,7 @@ import 'package:flutter_appauth/flutter_appauth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../api/api_exception.dart';
+import '../cache/cache_log.dart';
 import 'auth_config.dart';
 import 'jwt.dart';
 
@@ -41,15 +42,25 @@ class _StoredTokens {
 /// thing behind a confusingly-named `getAccessToken()`; the naming here is
 /// deliberately literal.
 class AuthService {
-  AuthService({FlutterAppAuth? appAuth, FlutterSecureStorage? storage})
-      : _appAuth = appAuth ?? const FlutterAppAuth(),
-        _storage = storage ?? const FlutterSecureStorage();
+  AuthService({
+    FlutterAppAuth? appAuth,
+    FlutterSecureStorage? storage,
+    CacheLog? log,
+  })  : _appAuth = appAuth ?? const FlutterAppAuth(),
+        _storage = storage ?? const FlutterSecureStorage(),
+        _log = log ?? CacheLog.instance;
 
   static const _idTokenKey = 'phamdash_id_token';
   static const _refreshTokenKey = 'phamdash_refresh_token';
 
   final FlutterAppAuth _appAuth;
   final FlutterSecureStorage _storage;
+
+  /// Every sign-in, restore and renewal is recorded with its outcome, because
+  /// "I keep getting signed out" is otherwise unanswerable: the reason the IdP
+  /// gave is discarded the moment [_refresh] turns it into null. Outcomes only
+  /// - a token value never goes in here.
+  final CacheLog _log;
 
   _StoredTokens? _tokens;
 
@@ -90,9 +101,20 @@ class AuthService {
     final user = currentUser;
     if (user == null) {
       // Unreadable token — treat as no session at all.
+      _log.record(
+        CacheEventKind.authRestore,
+        '*',
+        detail: 'stored ID token unreadable; session dropped',
+      );
       await _clear();
       return null;
     }
+    _log.record(
+      CacheEventKind.authRestore,
+      '*',
+      detail: 'refresh token: ${refreshToken == null ? 'NONE' : 'yes'} · '
+          'ID token ${_expiry(idToken)}',
+    );
     _userController.add(user);
     return user;
   }
@@ -117,6 +139,12 @@ class AuthService {
     }
 
     await _persist(idToken: idToken, refreshToken: result.refreshToken);
+    _log.record(
+      CacheEventKind.authSignIn,
+      '*',
+      detail: 'refresh token: ${result.refreshToken == null ? 'NONE' : 'yes'} · '
+          'ID token ${_expiry(idToken)}',
+    );
     final user = currentUser;
     if (user == null) {
       throw StateError('ID token carried no oid/sub claim to identify the user.');
@@ -170,11 +198,13 @@ class AuthService {
     final refreshToken = _tokens?.refreshToken;
     if (refreshToken == null) {
       // Nothing to renew with; the caller decides whether to sign out.
+      _failed('no refresh token stored');
       return null;
     }
 
+    final TokenResponse result;
     try {
-      final result = await _appAuth.token(
+      result = await _appAuth.token(
         TokenRequest(
           AuthConfig.clientId,
           AuthConfig.redirectUrl,
@@ -183,22 +213,68 @@ class AuthService {
           refreshToken: refreshToken,
         ),
       );
-      final idToken = result.idToken;
-      if (idToken == null) return null;
+    } on FlutterAppAuthPlatformException catch (error) {
+      final details = error.platformErrorDetails;
+      final description = _firstLine(details.errorDescription);
+      final suffix = description == null ? '' : ' - $description';
+      if (_rejections.contains(details.error)) {
+        _failed('refused: ${details.error}$suffix');
+        return null;
+      }
+      _failed('unreachable: ${details.error ?? error.code}$suffix');
+      throw const NetworkException(_unreachable);
+    } on Object catch (error) {
+      _failed('unreachable: ${_firstLine('$error')}');
+      throw const NetworkException(_unreachable);
+    }
 
-      // A refresh response may omit refresh_token, meaning "keep using the one
-      // you have"; only overwrite when a new one is actually issued.
+    final idToken = result.idToken;
+    if (idToken == null) {
+      _failed('token response carried no id_token');
+      return null;
+    }
+
+    // A refresh response may omit refresh_token, meaning "keep using the one
+    // you have"; only overwrite when a new one is actually issued.
+    try {
       await _persist(
         idToken: idToken,
         refreshToken: result.refreshToken ?? refreshToken,
       );
+    } on Object catch (error) {
+      // The renewed tokens are already in memory, so this request can go
+      // ahead; but a rotated refresh token that never reached storage is a
+      // forced sign-in at the next cold start, which is worth knowing.
+      _failed('renewed, but could not be stored: ${_firstLine('$error')}');
       return idToken;
-    } on FlutterAppAuthPlatformException catch (error) {
-      if (_rejections.contains(error.platformErrorDetails.error)) return null;
-      throw const NetworkException(_unreachable);
-    } on Object {
-      throw const NetworkException(_unreachable);
     }
+    _log.record(
+      CacheEventKind.authRefresh,
+      '*',
+      detail: 'refresh token ${result.refreshToken == null ? 'kept' : 'rotated'}'
+          ' · ID token ${_expiry(idToken)}',
+    );
+    return idToken;
+  }
+
+  void _failed(String reason) =>
+      _log.record(CacheEventKind.authRefreshFailed, '*', detail: reason);
+
+  /// Entra's descriptions run to several lines of trace and correlation ids;
+  /// the first line holds the AADSTS code and the sentence that explains it.
+  static String? _firstLine(String? text) {
+    final line = text?.trim().split('\n').first.trim();
+    if (line == null || line.isEmpty) return null;
+    return line.length > 300 ? '${line.substring(0, 300)}…' : line;
+  }
+
+  static String _expiry(String idToken) {
+    final exp = Jwt.expiry(idToken)?.toLocal();
+    if (exp == null) return 'has no exp';
+    final verb = exp.isAfter(DateTime.now()) ? 'expires' : 'expired';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '$verb ${exp.year}-${two(exp.month)}-${two(exp.day)} '
+        '${two(exp.hour)}:${two(exp.minute)}';
   }
 
   static const String _unreachable =

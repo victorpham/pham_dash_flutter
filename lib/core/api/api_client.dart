@@ -40,9 +40,10 @@ class ApiClient {
   final AuthService _auth;
 
   /// Emitted when the session could not be recovered and the user was signed
-  /// out. The router listens so it can send them back to /login.
-  final _sessionExpired = StreamController<void>.broadcast();
-  Stream<void> get sessionExpired => _sessionExpired.stream;
+  /// out. The router listens so it can send them back to /login. Carries which
+  /// of the two ways it ended, for the auth history.
+  final _sessionExpired = StreamController<String>.broadcast();
+  Stream<String> get sessionExpired => _sessionExpired.stream;
 
   Future<void> _onRequest(
     RequestOptions options,
@@ -117,7 +118,11 @@ class ApiClient {
       }
 
       await _auth.signOut();
-      _sessionExpired.add(null);
+      _sessionExpired.add(
+        token == null
+            ? 'no token after a forced refresh'
+            : 'API still answered 401 with a freshly renewed token',
+      );
       return handler.reject(
         DioException(
           requestOptions: options,

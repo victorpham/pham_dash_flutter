@@ -27,6 +27,9 @@ Future<void> main() async {
     // are available synchronously — otherwise every cold start flashes the
     // default emerald before settling on the user's colour.
     final prefs = await SharedPreferences.getInstance();
+    // Before the first frame, which is when the session is restored and the
+    // first auth event recorded.
+    CacheLog.instance.keepAuthHistoryIn(prefs);
 
     runApp(
       ProviderScope(

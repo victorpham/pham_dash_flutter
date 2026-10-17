@@ -1,7 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// What happened to one cached list, recorded so the phone can say so later.
 ///
@@ -43,6 +46,35 @@ enum CacheEventKind {
   /// An error Riverpod handed to the zone rather than to a provider - which is
   /// where a `persist` decode failure goes. See `main()`.
   uncaught,
+
+  /// An interactive sign-in finished. The detail says whether the IdP issued
+  /// a refresh token - without one the session cannot outlive the ID token.
+  authSignIn,
+
+  /// A stored session was loaded at launch.
+  authRestore,
+
+  /// The ID token was renewed with the refresh token.
+  authRefresh,
+
+  /// A renewal did not produce a token, and why - including the IdP's
+  /// `error_description`, which is where Entra puts its AADSTS code.
+  authRefreshFailed,
+
+  /// The user signed out from the menu, as opposed to [sessionExpired].
+  authSignOut;
+
+  /// Auth events are also kept across launches - see
+  /// [CacheLog.keepAuthHistoryIn].
+  bool get isAuth => switch (this) {
+    authSignIn ||
+    authRestore ||
+    authRefresh ||
+    authRefreshFailed ||
+    authSignOut ||
+    sessionExpired => true,
+    _ => false,
+  };
 }
 
 @immutable
@@ -89,19 +121,95 @@ class CacheLog {
   static final bool _echo =
       kDebugMode && !Platform.environment.containsKey('FLUTTER_TEST');
 
+  /// Where [authHistory] survives a restart. Deliberately outside the
+  /// `phamdash_cache:` prefix, so neither sign-out nor `claimFor` clears it:
+  /// the record of why a session ended has to outlive the session.
+  static const String authHistoryKey = 'phamdash_auth_history';
+
+  /// Enough to span a few days of launches and hourly refreshes.
+  static const int authCapacity = 30;
+
   final List<CacheEvent> _events = [];
+  final List<CacheEvent> _authHistory = [];
+  SharedPreferences? _prefs;
 
   /// Newest first.
   List<CacheEvent> get events => List.unmodifiable(_events.reversed);
+
+  /// Auth events from this launch and earlier ones, newest first.
+  ///
+  /// The session log alone cannot answer "why was I signed out overnight":
+  /// the launch that saw the refresh fail is gone by the time anyone looks.
+  /// Only outcomes are kept - never a token.
+  List<CacheEvent> get authHistory => List.unmodifiable(_authHistory.reversed);
+
+  /// Loads the stored auth history and keeps it up to date from now on. Call
+  /// once at startup, before the session is restored.
+  void keepAuthHistoryIn(SharedPreferences prefs) {
+    _prefs = prefs;
+    _authHistory
+      ..clear()
+      ..addAll(_readHistory(prefs.getString(authHistoryKey)));
+  }
 
   void record(CacheEventKind kind, String key, {String? detail}) {
     final event = CacheEvent(kind, key, at: DateTime.now(), detail: detail);
     _events.add(event);
     if (_events.length > capacity) _events.removeAt(0);
+    if (kind.isAuth) _recordAuth(event);
     if (_echo) debugPrint('[cache] $event');
   }
 
-  void clear() => _events.clear();
+  void _recordAuth(CacheEvent event) {
+    _authHistory.add(event);
+    if (_authHistory.length > authCapacity) _authHistory.removeAt(0);
+    final prefs = _prefs;
+    if (prefs == null) return;
+    unawaited(
+      prefs.setString(
+        authHistoryKey,
+        jsonEncode([
+          for (final e in _authHistory)
+            {
+              'kind': e.kind.name,
+              'key': e.key,
+              'at': e.at.toUtc().toIso8601String(),
+              if (e.detail != null) 'detail': e.detail,
+            },
+        ]),
+      ),
+    );
+  }
+
+  /// Tolerant: a row this version cannot read is skipped, and an unreadable
+  /// list is treated as empty - diagnostics must never break a launch.
+  static List<CacheEvent> _readHistory(String? raw) {
+    if (raw == null) return const [];
+    try {
+      final rows = jsonDecode(raw);
+      if (rows is! List) return const [];
+      return [
+        for (final row in rows)
+          if (row is Map<String, dynamic>)
+            if (CacheEventKind.values.asNameMap()[row['kind']] case final kind?)
+              if (DateTime.tryParse('${row['at']}') case final at?)
+                CacheEvent(
+                  kind,
+                  '${row['key'] ?? '*'}',
+                  at: at.toLocal(),
+                  detail: row['detail'] as String?,
+                ),
+      ];
+    } on Object {
+      return const [];
+    }
+  }
+
+  /// Empties this launch's log. The stored auth history is left alone.
+  void clear() {
+    _events.clear();
+    _authHistory.clear();
+  }
 }
 
 final cacheLogProvider = Provider<CacheLog>((ref) => CacheLog.instance);
