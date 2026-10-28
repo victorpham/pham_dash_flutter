@@ -52,6 +52,16 @@ class TodoRepository {
   /// Answers 204 even when the list never existed.
   Future<void> deleteList(int id) => _api.delete('/todo/lists/$id');
 
+  /// Assigns `displayOrder = index + 1` to the caller's lists, in the order
+  /// sent - one-based so a new list (created at 0) still lands on top.
+  ///
+  /// **Send the full ordering**, pinned lists included: ids you omit keep their
+  /// old `displayOrder`. Pinned lists sort first whatever their order here.
+  Future<void> reorderLists(List<int> listIds) => _api.post<dynamic>(
+        '/todo/lists/reorder',
+        body: {'listIds': listIds},
+      );
+
   /// A **toggle**, not a setter - it flips the current value and returns the
   /// new one.
   Future<bool?> togglePin(int id) async {

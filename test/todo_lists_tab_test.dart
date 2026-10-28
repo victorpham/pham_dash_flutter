@@ -13,6 +13,7 @@ import 'package:pham_dash_flutter/core/ui/async_view.dart';
 import 'package:pham_dash_flutter/data/models/todo_models.dart';
 import 'package:pham_dash_flutter/data/repositories/todo_repository.dart';
 import 'package:pham_dash_flutter/features/dashboard/dashboard_shell.dart';
+import 'package:pham_dash_flutter/features/todo/todo_lists_tab.dart';
 import 'package:pham_dash_flutter/features/todo/todo_providers.dart';
 
 const _chores = TodoLabel(id: 1, name: 'Chores', listCount: 1);
@@ -66,6 +67,15 @@ class _FakeTodos extends TodoRepository {
   /// When set, `lists()` fails with it instead of answering.
   Object? failWith;
 
+  /// When set, replaces the unarchived answer; `reorderLists` rearranges it
+  /// the way the server would, so the re-read after a drop agrees.
+  List<TodoList>? answer;
+
+  List<int>? lastReorder;
+
+  /// When set, `reorderLists` fails with it.
+  Object? reorderFailWith;
+
   @override
   Future<List<TodoList>> lists({bool includeArchived = false}) async {
     listCalls++;
@@ -73,9 +83,19 @@ class _FakeTodos extends TodoRepository {
     await gate?.future;
     final error = failWith;
     if (error != null) throw error;
+    if (answer case final answer? when !includeArchived) return answer;
     return includeArchived
         ? [_groceries, _packing, _oldTrip]
         : [_groceries, _packing];
+  }
+
+  @override
+  Future<void> reorderLists(List<int> listIds) async {
+    lastReorder = listIds;
+    final error = reorderFailWith;
+    if (error != null) throw error;
+    final byId = {for (final list in answer ?? const <TodoList>[]) list.id: list};
+    answer = [for (final id in listIds) ?byId[id]];
   }
 
   @override
@@ -105,11 +125,13 @@ Future<_FakeTodos> _pumpTab(
   Completer<void>? gate,
   Object? failWith,
   int? labelFilter,
+  List<TodoList>? answer,
   bool settle = true,
 }) async {
   final todos = _FakeTodos(ApiClient(AuthService()))
     ..gate = gate
-    ..failWith = failWith;
+    ..failWith = failWith
+    ..answer = answer;
 
   await tester.pumpWidget(
     ProviderScope(
@@ -343,5 +365,64 @@ void main() {
 
     expect(find.text('Saved last time'), findsNothing);
     expect(find.text('Groceries'), findsOneWidget);
+  });
+
+  group('reordering', () {
+    final errands = _list(13, 'Errands');
+    final reorderable = [_groceries, _packing, errands];
+
+    /// Drags the handle of the card titled [title] by [dy] pixels, in steps so
+    /// the `ReorderableListView` sees a real drag rather than a fling.
+    Future<void> dragCard(WidgetTester tester, String title, double dy) async {
+      final handle = find.descendant(
+        of: find.widgetWithText(TodoListCard, title),
+        matching: find.byIcon(Icons.drag_handle),
+      );
+      final gesture = await tester.startGesture(tester.getCenter(handle));
+      for (var i = 0; i < 10; i++) {
+        await gesture.moveBy(Offset(0, dy / 10));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    double topOf(WidgetTester tester, String title) =>
+        tester.getTopLeft(find.text(title)).dy;
+
+    // Pinned lists sort first on the server whatever order they are sent in,
+    // so the whole ordering goes up - pinned section included - and a drop
+    // within "All lists" leaves Groceries at the front.
+    testWidgets('dropping a list sends the full ordering, pinned first',
+        (tester) async {
+      final todos = await _pumpTab(tester, answer: reorderable);
+      expect(find.byIcon(Icons.drag_handle), findsNWidgets(3));
+      expect(topOf(tester, 'Packing'), lessThan(topOf(tester, 'Errands')));
+
+      await dragCard(tester, 'Errands', -120);
+
+      expect(todos.lastReorder, [_groceries.id, errands.id, _packing.id]);
+      expect(topOf(tester, 'Errands'), lessThan(topOf(tester, 'Packing')));
+    });
+
+    testWidgets('a failed reorder rolls back and says why', (tester) async {
+      final todos = await _pumpTab(tester, answer: reorderable)
+        ..reorderFailWith = const ApiException(500, 'Server error');
+
+      await dragCard(tester, 'Errands', -120);
+
+      expect(find.text('Server error'), findsOneWidget);
+      expect(topOf(tester, 'Packing'), lessThan(topOf(tester, 'Errands')));
+      expect(todos.listCalls, 1);
+    });
+
+    // The label endpoint ignores `displayOrder`; a drag there would save an
+    // order the filtered view never shows.
+    testWidgets('a label-filtered view has no drag handles', (tester) async {
+      await _pumpTab(tester, labelFilter: _chores.id);
+
+      expect(find.text('Packing'), findsOneWidget);
+      expect(find.byIcon(Icons.drag_handle), findsNothing);
+    });
   });
 }

@@ -110,6 +110,34 @@ class TodoListsNotifier extends AsyncNotifier<List<TodoList>>
     }
     ref.invalidateSelf();
   }
+
+  /// Puts the lists in [ordering] at once and saves it, like [togglePin]:
+  /// rolled back on failure, the caller shows the error. [ordering] is every
+  /// shown list's id, pinned first - see [TodoRepository.reorderLists].
+  ///
+  /// `displayOrder` is rewritten the way the server will, so the cached copy
+  /// written from this state already agrees with the next fetch.
+  Future<void> reorder(List<int> ordering) async {
+    final before = state.value;
+    if (before == null) return;
+
+    final byId = {for (final list in before) list.id: list};
+    state = AsyncData([
+      for (final (index, id) in ordering.indexed)
+        if (byId[id] case final list?) list.copyWith(displayOrder: index + 1),
+      // Anything the caller did not send keeps its place at the end.
+      ...before.where((list) => !ordering.contains(list.id)),
+    ]);
+    try {
+      await ref
+          .read(pendingWritesProvider.notifier)
+          .track(() => ref.read(todoRepositoryProvider).reorderLists(ordering));
+    } catch (_) {
+      state = AsyncData(before);
+      rethrow;
+    }
+    ref.invalidateSelf();
+  }
 }
 
 final todoLabelsProvider =

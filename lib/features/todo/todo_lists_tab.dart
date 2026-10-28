@@ -58,22 +58,112 @@ class TodoListsTab extends ConsumerWidget {
           final pinned = data.where((l) => l.isPinned).toList();
           final rest = data.where((l) => !l.isPinned).toList();
 
+          // The label endpoint ignores `displayOrder`, so a drag there would
+          // save an order that view never shows.
+          final reorderable = ref.watch(labelFilterProvider) == null;
+
+          // The server sorts pinned lists first whatever their order, so each
+          // section reorders on its own and the other is sent unchanged.
+          Future<void> save(List<int> pinnedIds, List<int> restIds) async {
+            try {
+              await ref
+                  .read(todoListsProvider.notifier)
+                  .reorder([...pinnedIds, ...restIds]);
+            } on ApiException catch (error) {
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(error.message)));
+            }
+          }
+
+          List<int> ids(List<TodoList> lists) => [for (final l in lists) l.id];
+
           return ListView(
             // The bottom padding clears the shell's 60px bar and its FAB.
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 88),
             children: [
               if (pinned.isNotEmpty) ...[
                 const _SectionLabel('Pinned'),
-                for (final list in pinned) TodoListCard(list: list),
+                _ListSection(
+                  lists: pinned,
+                  reorderable: reorderable,
+                  onReorder: (ordering) => save(ordering, ids(rest)),
+                ),
                 const SizedBox(height: 8),
               ],
               if (rest.isNotEmpty && pinned.isNotEmpty)
                 const _SectionLabel('All lists'),
-              for (final list in rest) TodoListCard(list: list),
+              _ListSection(
+                lists: rest,
+                reorderable: reorderable,
+                onReorder: (ordering) => save(ids(pinned), ordering),
+              ),
             ],
           );
         },
       ),
+    );
+  }
+}
+
+/// One draggable run of cards — the pinned lists, or the rest.
+///
+/// Like `_ItemSection` on the detail screen: the cards settle where they were
+/// dropped and stay there while the request runs, rather than snapping back
+/// until the re-read lands.
+class _ListSection extends StatefulWidget {
+  const _ListSection({
+    required this.lists,
+    required this.reorderable,
+    required this.onReorder,
+  });
+
+  final List<TodoList> lists;
+
+  /// False hides the drag handles, so [onReorder] cannot fire.
+  final bool reorderable;
+  final Future<void> Function(List<int> ordering) onReorder;
+
+  @override
+  State<_ListSection> createState() => _ListSectionState();
+}
+
+class _ListSectionState extends State<_ListSection> {
+  late List<TodoList> _lists = widget.lists;
+
+  @override
+  void didUpdateWidget(_ListSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A re-read, a pin or a rollback has landed: the provider's order is
+    // authoritative again.
+    if (!identical(widget.lists, oldWidget.lists)) _lists = widget.lists;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_lists.isEmpty) return const SizedBox.shrink();
+
+    return ReorderableListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      // An explicit handle, as on item rows: a long-press drag on the whole
+      // card would compete with its tap and with the outer list's scroll.
+      buildDefaultDragHandles: false,
+      itemCount: _lists.length,
+      itemBuilder: (context, index) => TodoListCard(
+        key: ValueKey(_lists[index].id),
+        list: _lists[index],
+        dragIndex: widget.reorderable ? index : null,
+      ),
+      onReorderItem: (oldIndex, newIndex) {
+        setState(() {
+          final next = [..._lists];
+          next.insert(newIndex, next.removeAt(oldIndex));
+          _lists = next;
+        });
+        widget.onReorder([for (final list in _lists) list.id]);
+      },
     );
   }
 }
@@ -218,9 +308,13 @@ class _SectionLabel extends StatelessWidget {
 }
 
 class TodoListCard extends ConsumerWidget {
-  const TodoListCard({super.key, required this.list});
+  const TodoListCard({super.key, required this.list, this.dragIndex});
 
   final TodoList list;
+
+  /// The card's index in its enclosing `ReorderableListView`. Null shows no
+  /// drag handle.
+  final int? dragIndex;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -292,6 +386,22 @@ class TodoListCard extends ConsumerWidget {
                               }
                             },
                           ),
+                          if (dragIndex != null)
+                            ReorderableDragStartListener(
+                              index: dragIndex!,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 8,
+                                ),
+                                child: Icon(
+                                  Icons.drag_handle,
+                                  size: 20,
+                                  semanticLabel: 'Reorder',
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                       const SizedBox(height: 2),
