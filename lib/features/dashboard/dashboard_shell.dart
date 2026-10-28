@@ -351,6 +351,16 @@ class AppDrawer extends ConsumerWidget {
                 context.push('/calendar');
               },
             ),
+            // Not in the web drawer: the picture book is a phone-only feature,
+            // since the phone is what gets handed to the toddler.
+            ListTile(
+              leading: const Icon(Icons.auto_stories_outlined),
+              title: const Text('Picture Book'),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push('/picture-book');
+              },
+            ),
             const ListTile(
               leading: Icon(Icons.spellcheck_outlined),
               title: Text('Spelling'),

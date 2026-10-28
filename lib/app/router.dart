@@ -9,6 +9,9 @@ import '../features/dashboard/dashboard_shell.dart';
 import '../features/login/login_screen.dart';
 import '../features/people/people_screen.dart';
 import '../features/people/person_detail_screen.dart';
+import '../features/picture_book/flashcards_screen.dart';
+import '../features/picture_book/picture_book_screen.dart';
+import '../features/picture_book/picture_books_screen.dart';
 import '../features/todo/todo_list_detail_screen.dart';
 
 /// Where to send the user once they finish signing in.
@@ -136,6 +139,23 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/todo/:id',
         builder: (context, state) => TodoListDetailScreen(
           listId: int.parse(state.pathParameters['id']!),
+        ),
+      ),
+      // The picture book: books → one book's words → the toddler's flashcards.
+      GoRoute(
+        path: '/picture-book',
+        builder: (context, state) => const PictureBooksScreen(),
+      ),
+      GoRoute(
+        path: '/picture-book/:id',
+        builder: (context, state) => PictureBookScreen(
+          bookId: int.parse(state.pathParameters['id']!),
+        ),
+      ),
+      GoRoute(
+        path: '/picture-book/:id/play',
+        builder: (context, state) => FlashcardsScreen(
+          bookId: int.parse(state.pathParameters['id']!),
         ),
       ),
       // Reached from the drawer footer. Not a destination anyone browses to —

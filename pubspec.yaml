@@ -50,6 +50,7 @@ dependencies:
   # Opens a home address in whatever map app the user prefers. Already resolved
   # transitively through markdown_widget; naming it here only makes it direct.
   url_launcher: ^6.3.2
+  flutter_tts: ^4.2.5
 
 dev_dependencies:
   flutter_test:

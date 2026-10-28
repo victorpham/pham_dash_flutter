@@ -75,5 +75,12 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="geo"/>
         </intent>
+
+        <!-- The picture book reads each word aloud. flutter_tts binds the
+             device's text-to-speech engine, which Android 11+ package
+             visibility hides without this. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
     </queries>
 </manifest>

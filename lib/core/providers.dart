@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/repositories/calendar_repository.dart';
 import '../data/repositories/people_repository.dart';
+import '../data/repositories/picture_book_repository.dart';
 import '../data/repositories/todo_repository.dart';
 import '../data/repositories/weather_repository.dart';
 import 'api/api_client.dart';
@@ -56,6 +57,10 @@ final relationshipsRepositoryProvider = Provider(
 
 final personTagsRepositoryProvider = Provider(
   (ref) => PersonTagsRepository(ref.watch(apiClientProvider)),
+);
+
+final pictureBookRepositoryProvider = Provider(
+  (ref) => PictureBookRepository(ref.watch(apiClientProvider)),
 );
 
 final userPreferenceRepositoryProvider = Provider(
